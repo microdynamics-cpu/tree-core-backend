@@ -24,9 +24,13 @@ VCD_OBJ_FILES   = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(VCD_SRC)) $(YAC
 
 TEST_APP        ?= $(BUILD_DIR)/vcd-parse
 
+$(shell mkdir -p build)
 all : vcd-parser docs $(BUILD_DIR)/libverilog-vcd-parser.a
 
 vcd-parser: $(TEST_APP)
+
+test:
+	./build/vcd-parse ./tinyriscv_soc_tb.vcd
 
 parser-srcs: $(YAC_OUT) $(LEX_OUT)
 
@@ -50,6 +54,7 @@ $(TEST_APP) : $(TEST_FILE) $(SRC_DIR)/VCDStandalone.cpp $(VCD_OBJ_FILES)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 clean:
-	rm -rf $(LEX_OUT) $(LEX_HEADER) $(LEX_OBJ) \
-           $(YAC_OUT) $(YAC_HEADER) $(YAC_OBJ) \
-           position.hh stack.hh location.hh VCDParser.output $(TEST_APP)
+	rm -rf build/
+# rm -rf $(LEX_OUT) $(LEX_HEADER) $(LEX_OBJ) \
+#        $(YAC_OUT) $(YAC_HEADER) $(YAC_OBJ) \
+#        position.hh stack.hh location.hh VCDParser.output $(TEST_APP)
