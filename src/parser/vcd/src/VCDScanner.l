@@ -18,6 +18,8 @@
 #undef yywrap
 #define yywrap() 1
 
+// example:
+// https://github.com/ezaquarii/bison-flex-cpp-example/blob/master/scanner.l
 #define yyterminate() return VCDParser::parser::make_END(loc)
 
 static VCDParser::location loc;

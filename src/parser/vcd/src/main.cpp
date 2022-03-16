@@ -2,7 +2,6 @@
 @file
 @brief Definition of the VCDFileParser class
 */
-
 #include "VCDFileParser.hpp"
 
 /*!
@@ -12,11 +11,8 @@ int main(int argc, char **argv)
 {
 
     std::string infile(argv[1]);
-
     std::cout << "Parsing " << infile << std::endl;
-
     VCDFileParser parser;
-
     VCDFile *trace = parser.parse_file(infile);
 
     if (trace)
@@ -30,12 +26,9 @@ int main(int argc, char **argv)
         // Print out every signal in every scope.
         for (VCDScope *scope : *trace->get_scopes())
         {
-
             std::cout << "Scope: " << scope->name << std::endl;
-
             for (VCDSignal *signal : scope->signals)
             {
-
                 std::cout << "\t" << signal->hash << "\t"
                           << signal->reference;
 
@@ -49,7 +42,6 @@ int main(int argc, char **argv)
         }
 
         delete trace;
-
         return 0;
     }
     else
