@@ -1,6 +1,6 @@
 <p align="center">
     <!-- <img width="200px" src="./.images/tree_core_logo.svg" align="center" alt="Tree Core CPU" /> -->
-    <h2 align="center">TreeCore Backend: A Core Component of TreeCore IDE to Execute Heavy Computing Task in Backstage</h2>
+    <h2 align="center">TreeCore Backend: A Core Component to Execute Heavy Computing Task</h2>
 </p>
 <p align="center">
    <a href="https://github.com/microdynamics-cpu/tree-core-backend/actions">
