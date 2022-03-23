@@ -29,7 +29,7 @@
 ## Usage
 
 ## License
-All of the TreeCore codes are release under the [GPL-3.0 License](LICENSE).
+All of the codes are release under the [GPL-3.0 License](LICENSE) and compliance with other open source agreements. You can find all 3rd party libraries licenses in [3RD_PARTY.md](./3RD_PARTY.md).
 
 ## Acknowledgement
 
