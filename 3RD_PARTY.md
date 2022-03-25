@@ -23,3 +23,8 @@ These components are installed via [Makefile](./Makefile). You can check all the
 * maintainer: VHDL-LS
 * License: [MPL-2.0](https://github.com/VHDL-LS/rust_hdl/blob/master/LICENSE.txt)
 * repo: https://github.com/VHDL-LS/rust_hdl
+
+### rust_hdl_vscode
+* maintainer: VHDL-LS
+* License: [MIT](https://github.com/VHDL-LS/rust_hdl_vscode/blob/master/LICENSE)
+* repo: https://github.com/VHDL-LS/rust_hdl_vscode
