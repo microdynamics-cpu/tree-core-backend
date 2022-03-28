@@ -14,6 +14,7 @@ rpc-test:
 	mv stubclient.h $(JSON_RPC_PATH)/gen
 	g++ $(JSON_RPC_PATH)/stubserver.cpp -ljsoncpp -lmicrohttpd -ljsonrpccpp-common -ljsonrpccpp-server -o $(JSON_RPC_PATH)/sampleserver
 	g++ $(JSON_RPC_PATH)/stubclient.cpp -ljsoncpp -lcurl -ljsonrpccpp-common -ljsonrpccpp-client -o $(JSON_RPC_PATH)/sampleclient
-	
+
+
 .PHONY:
 	setup rpc-test
