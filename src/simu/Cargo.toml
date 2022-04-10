@@ -1,0 +1,6 @@
+
+[package]
+name = "treecore-simu"
+version = "0.0.1"
+authors = ["maksyuki <maksyuki@126.com>"]
+edition = '2021'
