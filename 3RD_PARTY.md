@@ -28,3 +28,8 @@ These components are installed via [Makefile](./Makefile). You can check all the
 * maintainer: VHDL-LS
 * License: [MIT](https://github.com/VHDL-LS/rust_hdl_vscode/blob/master/LICENSE)
 * repo: https://github.com/VHDL-LS/rust_hdl_vscode
+
+### riscv-rust
+* maintainer: takahirox
+* License: [MIT](https://github.com/takahirox/riscv-rust/blob/master/LICENSE)
+* repo: https://github.com/takahirox/riscv-rust
