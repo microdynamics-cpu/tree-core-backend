@@ -24,7 +24,7 @@
 </p>
 
 ## Overview
-TreeCore Backend aims to provide the core computing support for the [TreeCore IDE](https://github.com/microdynamics-cpu/tree-core-ide). It provides multiple hardware description language support, vcd wave viewer and riscv simulator.
+TreeCore Backend aims to provide the core computing support for the [TreeCore IDE](https://github.com/microdynamics-cpu/tree-core-ide). It provides multiple hardware description language support, vcd wave viewer, riscv simulator and so on.
 
 ## Motivation
 ## Feature
