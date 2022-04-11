@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Read;
+use treecore_simu::core::Core;
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -13,6 +14,8 @@ fn main() -> std::io::Result<()> {
     let mut file = File::open(filename)?;
     let mut contents = vec![];
     file.read_to_end(&mut contents)?;
-    println!("file: {:?}", contents);
+    // println!("file: {:?}", contents);
+    let mut core = Core::new();
+    core.run_simu(contents);
     Ok(())
 }
