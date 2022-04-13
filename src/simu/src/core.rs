@@ -1,3 +1,5 @@
+use crate::trace;
+
 const MEM_CAPACITY: usize = 1024 * 16;
 const CSR_CAPACITY: usize = 4096;
 
@@ -49,7 +51,7 @@ fn get_inst_name(inst: &Inst) -> &'static str {
     }
 }
 
-fn get_instruction_format(inst: &Inst) -> InstType {
+fn get_instruction_type(inst: &Inst) -> InstType {
     match inst {
         Inst::ADDI | Inst::SLLI | Inst::JALR | Inst::FENCE => InstType::I,
         Inst::MRET => InstType::R,
@@ -104,7 +106,7 @@ impl Core {
         }
     }
 
-    pub fn tick(&mut self) {
+    fn tick(&mut self) {
         // for v in self.x.iter() {
         //     println!("x: {:x}", v);
         // }
@@ -133,100 +135,107 @@ impl Core {
             | (self.mem[addr as usize] as u32)
     }
 
-    fn decode(&mut self, word: u32) -> Inst {
-        let opcode = word & 0x7F;
-        let func3 = (word >> 12) & 0x7;
-        // let func7 = (word >> 25) & 0x7F;
-
-        if opcode == 0x0F {
-            return match func3 {
-                0 => Inst::FENCE,
-                _ => {panic!()}
-            }
-        }
-
-        if opcode == 0x13 {
-            return match func3 {
-                0 => Inst::ADDI,
-                1 => Inst::SLLI,
-                _ => {
-                    println!("unkown func3: {:03b}", func3);
-                    println!(
-                        "[decode: UNKNOWN] PC:{:08x}, Word:{:08x}",
-                        self.pc.wrapping_sub(4),
-                        word
-                    );
-                    panic!();
-                }
-            };
-        }
-
-        if opcode == 0x17 {
-            return Inst::AUIPC;
-        }
-
-        if opcode == 0x37 {
-            return Inst::LUI;
-        }
-
-        if opcode == 0x63 {
-            return Inst::BNE;
-        }
-
-        if opcode == 0x67 {
-            return Inst::JALR;
-        }
-
-        if opcode == 0x6F {
-            return Inst::JAL;
-        }
-
-        if opcode == 0x73 {
-            if func3 == 0 {
-                if word == 0x30200073 {
-                    return Inst::MRET;
-                } else {
-                    panic!();
-                }
-            }
-
-            if func3 == 1 {
-                return Inst::CSRRW;
-            } else if func3 == 2 {
-                return Inst::CSRRS;
-            } else if func3 == 5 {
-                return Inst::CSRRWI;
-            } else {
-                println!(
-                    "[decode: UNKNOWN] PC:{:08x}, Word:{:08x}",
-                    self.pc.wrapping_sub(4),
-                    word
-                );
-                panic!();
-            }
-        }
-
-        println!(
-            "[decode: UNKNOWN] PC:{:08x}, Word:{:08x}",
-            self.pc.wrapping_sub(4),
-            word
-        );
-        panic!();
-    }
-
-    fn exec(&mut self, word: u32, inst: Inst) {
-        let format = get_instruction_format(&inst);
-        match format {
+    fn imm_ext_gen(inst_type: InstType, word: u32) -> i32 {
+        match inst_type {
             InstType::I => {
-                let rd = (word >> 7) & 0x1F; // [11:7]
-                let rs1 = (word >> 15) & 0x1F; // [19:15]
-                let imm = (match word & 0x8000_0000 {
+                return (match word & 0x8000_0000 {
                     // sign extn
                     // imm[31:11] = inst[31]
                     // imm[10:0] = inst[30:20]
                     0x8000_0000 => 0xFFFF_F800,
                     _ => 0,
                 } | ((word >> 20) & 0x0000_07FF)) as i32;
+            }
+            InstType::J => {
+                return (
+                    match word & 0x8000_0000 { // imm[31:20] = [31]
+                        0x8000_0000 => 0xFFF0_0000,
+                        _ => 0
+                    } |
+                    (word & 0x000F_F000) | // imm[19:12] = [19:12]
+                    ((word & 0x0010_0000) >> 9) | // imm[11] = [20]
+                    ((word & 0x7FE0_0000) >> 20)
+                    // imm[10:1] = [30:21]
+                ) as i32;
+            }
+            InstType::B => {
+                return (
+                    match word & 0x80000000 { // imm[31:12] = [31]
+                        0x80000000 => 0xFFFF_F800,
+                        _ => 0
+                    } |
+                    ((word & 0x0000_0080) << 4) | // imm[11] = [7]
+                    ((word & 0x7E00_0000) >> 20) | // imm[10:5] = [30:25]
+                    ((word & 0x0000_0F00) >> 7)
+                    // imm[4:1] = [11:8]
+                ) as i32;
+            }
+            _ => {
+                panic!();
+            }
+        }
+    }
+
+    fn decode(&mut self, word: u32) -> Inst {
+        let opcode = word & 0x7F;
+        let func3 = (word >> 12) & 0x7;
+        // let func7 = (word >> 25) & 0x7F;
+        if opcode == 0x0F {
+            return match func3 {
+                0 => Inst::FENCE,
+                _ => {
+                    panic!()
+                }
+            };
+        } else if opcode == 0x13 {
+            return match func3 {
+                0 => Inst::ADDI,
+                1 => Inst::SLLI,
+                _ => {
+                    trace::execpt_handle(self.pc, word);
+                    panic!();
+                }
+            };
+        } else if opcode == 0x17 {
+            return Inst::AUIPC;
+        } else if opcode == 0x37 {
+            return Inst::LUI;
+        } else if opcode == 0x63 {
+            return Inst::BNE;
+        } else if opcode == 0x67 {
+            return Inst::JALR;
+        } else if opcode == 0x6F {
+            return Inst::JAL;
+        } else if opcode == 0x73 {
+            return match func3 {
+                0 => {
+                    if word == 0x30200073 {
+                        return Inst::MRET;
+                    } else {
+                        panic!();
+                    }
+                }
+                1 => Inst::CSRRW,
+                2 => Inst::CSRRS,
+                5 => Inst::CSRRWI,
+                _ => {
+                    trace::execpt_handle(self.pc, word);
+                    panic!()
+                }
+            };
+        }
+
+        trace::execpt_handle(self.pc, word);
+        panic!();
+    }
+
+    fn exec(&mut self, word: u32, inst: Inst) {
+        let inst_type = get_instruction_type(&inst);
+        match inst_type {
+            InstType::I => {
+                let rd = (word >> 7) & 0x1F; // [11:7]
+                let rs1 = (word >> 15) & 0x1F; // [19:15]
+                let imm = Core::imm_ext_gen(InstType::I, word);
 
                 match inst {
                     Inst::ADDI => {
@@ -263,30 +272,22 @@ impl Core {
                 // let rd = (word >> 7) & 0x1F; // [11:7]
                 // let rs1 = (word >> 15) & 0x1F; // [19:15]
                 // let rs2 = (word >> 20) & 0x1F; // [24:20]
-                
                 match inst {
                     Inst::MRET => {}
-                    _ => {panic!()}
+                    _ => {
+                        panic!()
+                    }
                 }
             }
             InstType::J => {
                 let rd = (word >> 7) & 0x1F; // [11:7]
-                let imm = (
-                    match word & 0x8000_0000 { // imm[31:20] = [31]
-                        0x8000_0000 => 0xFFF0_0000,
-                        _ => 0
-                    } |
-                    (word & 0x000F_F000) | // imm[19:12] = [19:12]
-                    ((word & 0x0010_0000) >> 9) | // imm[11] = [20]
-                    ((word & 0x7FE0_0000) >> 20)
-                    // imm[10:1] = [30:21]
-                ) as u32;
+                let imm = Core::imm_ext_gen(InstType::J, word);
                 match inst {
                     Inst::JAL => {
                         if rd > 0 {
                             self.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
                         }
-                        self.pc = self.pc.wrapping_sub(4).wrapping_add(imm);
+                        self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                     }
                     _ => {
                         println!(
@@ -301,20 +302,11 @@ impl Core {
             InstType::B => {
                 let rs1 = (word >> 15) & 0x1F; // [11:7]
                 let rs2 = (word >> 20) & 0x1F; // [24:20]
-                let imm = (
-                    match word & 0x80000000 { // imm[31:12] = [31]
-                        0x80000000 => 0xFFFF_F800,
-                        _ => 0
-                    } |
-                    ((word & 0x0000_0080) << 4) | // imm[11] = [7]
-                    ((word & 0x7E00_0000) >> 20) | // imm[10:5] = [30:25]
-                    ((word & 0x0000_0F00) >> 7)
-                    // imm[4:1] = [11:8]
-                ) as u32;
+                let imm = Core::imm_ext_gen(InstType::B, word);
                 // println!("x[rs1]: {}, x[rs2]: {}", self.x[rs1 as usize], self.x[rs2 as usize]);
                 // panic!();
                 if self.x[rs1 as usize] != self.x[rs2 as usize] {
-                    self.pc = self.pc.wrapping_sub(4).wrapping_add(imm);
+                    self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                 }
             }
             InstType::U => {
