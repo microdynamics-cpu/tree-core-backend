@@ -19,10 +19,13 @@ enum Inst {
     BNE,
     LUI,
     AUIPC,
+    MRET,
+    FENCE,
 }
 
 enum InstType {
     I,
+    R,
     J,
     B,
     U,
@@ -41,18 +44,17 @@ fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::BNE => "BNE",
         Inst::LUI => "LUI",
         Inst::AUIPC => "AUIPC",
+        Inst::MRET => "MRET",
+        Inst::FENCE => "FENCE",
     }
 }
 
 fn get_instruction_format(inst: &Inst) -> InstType {
     match inst {
-        Inst::ADDI | 
-        Inst::SLLI |
-        Inst::JALR => InstType::I,
+        Inst::ADDI | Inst::SLLI | Inst::JALR | Inst::FENCE => InstType::I,
+        Inst::MRET => InstType::R,
         Inst::JAL => InstType::J,
-        Inst::CSRRS |
-        Inst::CSRRW |
-        Inst::CSRRWI  => InstType::C,
+        Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
         Inst::BNE => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
     }
@@ -84,12 +86,12 @@ impl Core {
         // panic!();
 
         loop {
+            // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc) {
                 0x00000073 => true,
                 _ => false,
             };
 
-            self.tick();
             if end {
                 match self.x[10] {
                     0 => println!("Test Passed"),
@@ -97,6 +99,8 @@ impl Core {
                 };
                 break;
             }
+
+            self.tick();
         }
     }
 
@@ -134,6 +138,13 @@ impl Core {
         let func3 = (word >> 12) & 0x7;
         // let func7 = (word >> 25) & 0x7F;
 
+        if opcode == 0x0F {
+            return match func3 {
+                0 => Inst::FENCE,
+                _ => {panic!()}
+            }
+        }
+
         if opcode == 0x13 {
             return match func3 {
                 0 => Inst::ADDI,
@@ -169,9 +180,16 @@ impl Core {
         if opcode == 0x6F {
             return Inst::JAL;
         }
-        
-        // println!("func3: {}", func3);
+
         if opcode == 0x73 {
+            if func3 == 0 {
+                if word == 0x30200073 {
+                    return Inst::MRET;
+                } else {
+                    panic!();
+                }
+            }
+
             if func3 == 1 {
                 return Inst::CSRRW;
             } else if func3 == 2 {
@@ -216,7 +234,6 @@ impl Core {
                         if rd > 0 {
                             self.x[rd as usize] = self.x[rs1 as usize].wrapping_add(imm);
                         }
-                        
                     }
                     Inst::SLLI => {
                         if rd > 0 {
@@ -230,6 +247,9 @@ impl Core {
                         }
                         self.pc = (self.x[rs1 as usize] as u32).wrapping_add(imm as u32);
                     }
+                    Inst::FENCE => {
+                        // no impl
+                    }
                     _ => {
                         println!(
                             "{}",
@@ -237,6 +257,16 @@ impl Core {
                         );
                         panic!();
                     }
+                }
+            }
+            InstType::R => {
+                // let rd = (word >> 7) & 0x1F; // [11:7]
+                // let rs1 = (word >> 15) & 0x1F; // [19:15]
+                // let rs2 = (word >> 20) & 0x1F; // [24:20]
+                
+                match inst {
+                    Inst::MRET => {}
+                    _ => {panic!()}
                 }
             }
             InstType::J => {
@@ -305,9 +335,6 @@ impl Core {
                         panic!();
                     }
                 }
-
-
-
             }
 
             InstType::C => {
@@ -326,7 +353,8 @@ impl Core {
                         if rd > 0 {
                             self.x[rd as usize] = self.csr[csr as usize] as i32;
                         }
-                        self.csr[csr as usize] = self.csr[csr as usize] | self.x[rs1 as usize] as u32;
+                        self.csr[csr as usize] =
+                            self.csr[csr as usize] | self.x[rs1 as usize] as u32;
                     }
                     Inst::CSRRWI => {
                         if rd > 0 {
@@ -338,7 +366,6 @@ impl Core {
                         panic!();
                     }
                 }
-
             }
         }
     }
