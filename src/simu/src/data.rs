@@ -19,6 +19,11 @@ impl Word {
         let len = rhs - lhs + 1; // len: [1, 32]
         (self.value >> lhs) & (((1u64 << len) - 1)  as u32)// [1, 0]
     }
+
+    pub fn pos(&self, rhs: usize, lhs: usize, pos: u32) -> u32 {
+        let dat = self.val(rhs, lhs);
+        dat << pos
+    }
 }
 
 #[cfg(test)]
