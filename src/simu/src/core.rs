@@ -1,3 +1,4 @@
+use crate::data::Word;
 use crate::trace;
 
 const MEM_CAPACITY: usize = 1024 * 16;
@@ -136,39 +137,39 @@ impl Core {
     }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i32 {
+        let inst = Word::new(word);
         match inst_type {
             InstType::I => {
-                return (match word & 0x8000_0000 {
-                    // sign extn
-                    // imm[31:11] = inst[31]
-                    // imm[10:0] = inst[30:20]
+                // imm[31:11] = inst[31]
+                // imm[10:0] = inst[30:20]
+                return (match inst.val(31, 31) {
                     0x8000_0000 => 0xFFFF_F800,
                     _ => 0,
-                } | ((word >> 20) & 0x0000_07FF)) as i32;
+                } | (inst.pos(30, 20, 0))) as i32;
             }
             InstType::J => {
-                return (
-                    match word & 0x8000_0000 { // imm[31:20] = [31]
-                        0x8000_0000 => 0xFFF0_0000,
-                        _ => 0
-                    } |
-                    (word & 0x000F_F000) | // imm[19:12] = [19:12]
-                    ((word & 0x0010_0000) >> 9) | // imm[11] = [20]
-                    ((word & 0x7FE0_0000) >> 20)
-                    // imm[10:1] = [30:21]
-                ) as i32;
+                // imm[31:20] = [31]
+                // imm[19:12] = [19:12]
+                // imm[11] = [20]
+                // imm[10:1] = [30:21]
+                return (match inst.val(31, 31) {
+                    0x8000_0000 => 0xFFF0_0000,
+                    _ => 0,
+                } | (inst.pos(19, 12, 12))
+                    | (inst.pos(20, 20, 11))
+                    | (inst.pos(30, 21, 1))) as i32;
             }
             InstType::B => {
-                return (
-                    match word & 0x80000000 { // imm[31:12] = [31]
-                        0x80000000 => 0xFFFF_F800,
-                        _ => 0
-                    } |
-                    ((word & 0x0000_0080) << 4) | // imm[11] = [7]
-                    ((word & 0x7E00_0000) >> 20) | // imm[10:5] = [30:25]
-                    ((word & 0x0000_0F00) >> 7)
-                    // imm[4:1] = [11:8]
-                ) as i32;
+                // imm[31:12] = [31]
+                // imm[11] = [7]
+                // imm[10:5] = [30:25]
+                // imm[4:1] = [11:8]
+                return (match inst.val(31, 31) {
+                    0x80000000 => 0xFFFF_F800,
+                    _ => 0,
+                } | (inst.pos(7, 7, 11))
+                    | (inst.pos(30, 25, 5))
+                    | (inst.pos(11, 8, 1))) as i32;
             }
             _ => {
                 panic!();
@@ -177,64 +178,76 @@ impl Core {
     }
 
     fn decode(&mut self, word: u32) -> Inst {
-        let opcode = word & 0x7F;
-        let func3 = (word >> 12) & 0x7;
+        let inst = Word::new(word);
+        let opcode = inst.val(6, 0);
+        let func3 = inst.val(14, 12);
         // let func7 = (word >> 25) & 0x7F;
-        if opcode == 0x0F {
-            return match func3 {
-                0 => Inst::FENCE,
-                _ => {
-                    panic!()
-                }
-            };
-        } else if opcode == 0x13 {
-            return match func3 {
-                0 => Inst::ADDI,
-                1 => Inst::SLLI,
-                _ => {
-                    trace::execpt_handle(self.pc, word);
-                    panic!();
-                }
-            };
-        } else if opcode == 0x17 {
-            return Inst::AUIPC;
-        } else if opcode == 0x37 {
-            return Inst::LUI;
-        } else if opcode == 0x63 {
-            return Inst::BNE;
-        } else if opcode == 0x67 {
-            return Inst::JALR;
-        } else if opcode == 0x6F {
-            return Inst::JAL;
-        } else if opcode == 0x73 {
-            return match func3 {
-                0 => {
-                    if word == 0x30200073 {
-                        return Inst::MRET;
-                    } else {
+        match opcode {
+            0x0F => {
+                return match func3 {
+                    0 => Inst::FENCE,
+                    _ => {
+                        panic!()
+                    }
+                };
+            }
+            0x13 => {
+                return match func3 {
+                    0 => Inst::ADDI,
+                    1 => Inst::SLLI,
+                    _ => {
+                        trace::execpt_handle(self.pc, word);
                         panic!();
                     }
-                }
-                1 => Inst::CSRRW,
-                2 => Inst::CSRRS,
-                5 => Inst::CSRRWI,
-                _ => {
-                    trace::execpt_handle(self.pc, word);
-                    panic!()
-                }
-            };
+                };
+            }
+            0x17 => {
+                return Inst::AUIPC;
+            }
+            0x37 => {
+                return Inst::LUI;
+            }
+            0x63 => {
+                return Inst::BNE;
+            }
+            0x67 => {
+                return Inst::JALR;
+            }
+            0x6F => {
+                return Inst::JAL;
+            }
+            0x73 => {
+                return match func3 {
+                    0 => {
+                        if word == 0x30200073 {
+                            return Inst::MRET;
+                        } else {
+                            panic!();
+                        }
+                    }
+                    1 => Inst::CSRRW,
+                    2 => Inst::CSRRS,
+                    5 => Inst::CSRRWI,
+                    _ => {
+                        trace::execpt_handle(self.pc, word);
+                        panic!()
+                    }
+                };
+            }
+            _ => {
+                trace::execpt_handle(self.pc, word);
+                panic!()
+            }
         }
-
-        trace::execpt_handle(self.pc, word);
-        panic!();
     }
 
     fn exec(&mut self, word: u32, inst: Inst) {
         let inst_type = get_instruction_type(&inst);
+        let inst_wrap = Word::new(word);
         match inst_type {
             InstType::I => {
-                let rd = (word >> 7) & 0x1F; // [11:7]
-                let rs1 = (word >> 15) & 0x1F; // [19:15]
+                let rd = inst_wrap.val(11, 7);
+                let rs1 = inst_wrap.val(19, 15);
                 let imm = Core::imm_ext_gen(InstType::I, word);
 
                 match inst {
@@ -280,7 +293,7 @@ impl Core {
                 }
             }
             InstType::J => {
-                let rd = (word >> 7) & 0x1F; // [11:7]
+                let rd = inst_wrap.val(11, 7);
                 let imm = Core::imm_ext_gen(InstType::J, word);
                 match inst {
                     Inst::JAL => {
@@ -300,8 +313,8 @@ impl Core {
                 };
             }
             InstType::B => {
-                let rs1 = (word >> 15) & 0x1F; // [11:7]
-                let rs2 = (word >> 20) & 0x1F; // [24:20]
+                let rs1 = inst_wrap.val(11, 7);
+                let rs2 = inst_wrap.val(24, 20);
                 let imm = Core::imm_ext_gen(InstType::B, word);
                 // println!("x[rs1]: {}, x[rs2]: {}", self.x[rs1 as usize], self.x[rs2 as usize]);
                 // panic!();
@@ -310,8 +323,8 @@ impl Core {
                 }
             }
             InstType::U => {
-                let rd = (word >> 7) & 0x1F; // [11:7]
-                let imm = word & 0xFFFF_F000;
+                let rd = inst_wrap.val(11, 7);
+                let imm = word & 0xFFFF_F000; // HACK: need to modfiy
                 match inst {
                     Inst::AUIPC => {
                         if rd > 0 {
@@ -330,9 +343,9 @@ impl Core {
             }
 
             InstType::C => {
-                let rd = (word >> 7) & 0x1F; // [11:7]
-                let rs1 = (word >> 15) & 0x1F; // [19:15]
-                let csr = (word >> 20) & 0xFF; // [31:20]
+                let rd = inst_wrap.val(11, 7);
+                let rs1 = inst_wrap.val(19, 15);
+                let csr = inst_wrap.val(31, 20);
 
                 match inst {
                     Inst::CSRRW => {
