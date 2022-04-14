@@ -19,7 +19,9 @@ enum Inst {
     CSRRS,
     CSRRW,
     CSRRWI,
+    BEQ,
     BNE,
+    BLT,
     LUI,
     AUIPC,
     MRET,
@@ -44,7 +46,9 @@ fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::CSRRS => "CSRRS",
         Inst::CSRRW => "CSRRW",
         Inst::CSRRWI => "CSRRWI",
+        Inst::BEQ => "BEQ",
         Inst::BNE => "BNE",
+        Inst::BLT => "BLT",
         Inst::LUI => "LUI",
         Inst::AUIPC => "AUIPC",
         Inst::MRET => "MRET",
@@ -58,7 +62,7 @@ fn get_instruction_type(inst: &Inst) -> InstType {
         Inst::MRET => InstType::R,
         Inst::JAL => InstType::J,
         Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
-        Inst::BNE => InstType::B,
+        Inst::BEQ | Inst::BNE | Inst::BLT => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
     }
 }
@@ -103,6 +107,7 @@ impl Core {
                 break;
             }
 
+            // println!("a0: {}", self.x[10]);
             self.tick();
         }
     }
@@ -208,7 +213,15 @@ impl Core {
                 return Inst::LUI;
             }
             0x63 => {
-                return Inst::BNE;
+                return match func3 {
+                    0 => Inst::BEQ,
+                    1 => Inst::BNE,
+                    4 => Inst::BLT,
+                    _ => {
+                        trace::execpt_handle(self.pc, word);
+                        panic!();
+                    }
+                }
             }
             0x67 => {
                 return Inst::JALR;
@@ -313,13 +326,32 @@ impl Core {
                 };
             }
             InstType::B => {
-                let rs1 = inst_wrap.val(11, 7);
+                let rs1 = inst_wrap.val(19, 15);
                 let rs2 = inst_wrap.val(24, 20);
                 let imm = Core::imm_ext_gen(InstType::B, word);
                 // println!("x[rs1]: {}, x[rs2]: {}", self.x[rs1 as usize], self.x[rs2 as usize]);
                 // panic!();
-                if self.x[rs1 as usize] != self.x[rs2 as usize] {
-                    self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                match inst {
+                    Inst::BEQ => {
+                        if self.x[rs1 as usize] == self.x[rs2 as usize] {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    Inst::BNE => {
+                        if self.x[rs1 as usize] != self.x[rs2 as usize] {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    Inst::BLT => {
+                        // println!("rs1: {}, rs2: {}", rs1, rs2);
+                        // trace::execpt_handle(self.pc, word);
+                        if self.x[rs1 as usize] < self.x[rs2 as usize] {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    _ => {
+                        panic!();
+                    }
                 }
             }
             InstType::U => {
