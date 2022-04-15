@@ -13,6 +13,7 @@ pub struct Core {
 
 enum Inst {
     ADDI,
+    ORI,
     SLLI,
     JAL,
     JALR,
@@ -37,9 +38,14 @@ enum InstType {
     C,
 }
 
+// enum Opcode {
+//     IMM,
+// }
+
 fn get_inst_name(inst: &Inst) -> &'static str {
     match inst {
         Inst::ADDI => "ADDI",
+        Inst::ORI => "ORI",
         Inst::SLLI => "SLLI",
         Inst::JAL => "JAL",
         Inst::JALR => "JALR",
@@ -58,7 +64,7 @@ fn get_inst_name(inst: &Inst) -> &'static str {
 
 fn get_instruction_type(inst: &Inst) -> InstType {
     match inst {
-        Inst::ADDI | Inst::SLLI | Inst::JALR | Inst::FENCE => InstType::I,
+        Inst::ADDI | Inst::ORI | Inst::SLLI | Inst::JALR | Inst::FENCE => InstType::I,
         Inst::MRET => InstType::R,
         Inst::JAL => InstType::J,
         Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
@@ -107,8 +113,8 @@ impl Core {
                 break;
             }
 
-            // println!("a0: {}", self.x[10]);
             self.tick();
+            // println!("ra: {:08x} t2: {:08x} a4: {:08x}", self.x[1], self.x[7], self.x[14]);
         }
     }
 
@@ -148,8 +154,9 @@ impl Core {
                 // imm[31:11] = inst[31]
                 // imm[10:0] = inst[30:20]
                 return (match inst.val(31, 31) {
-                    0x8000_0000 => 0xFFFF_F800,
-                    _ => 0,
+                    1 => 0xFFFF_F800,
+                    0 => 0,
+                    _ => panic!()
                 } | (inst.pos(30, 20, 0))) as i32;
             }
             InstType::J => {
@@ -158,8 +165,9 @@ impl Core {
                 // imm[11] = [20]
                 // imm[10:1] = [30:21]
                 return (match inst.val(31, 31) {
-                    0x8000_0000 => 0xFFF0_0000,
-                    _ => 0,
+                    1 => 0xFFF0_0000,
+                    0 => 0,
+                    _ => panic!()
                 } | (inst.pos(19, 12, 12))
                     | (inst.pos(20, 20, 11))
                     | (inst.pos(30, 21, 1))) as i32;
@@ -170,8 +178,9 @@ impl Core {
                 // imm[10:5] = [30:25]
                 // imm[4:1] = [11:8]
                 return (match inst.val(31, 31) {
-                    0x80000000 => 0xFFFF_F800,
-                    _ => 0,
+                    1 => 0xFFFF_F800,
+                    0 => 0,
+                    _ => panic!()
                 } | (inst.pos(7, 7, 11))
                     | (inst.pos(30, 25, 5))
                     | (inst.pos(11, 8, 1))) as i32;
@@ -200,6 +209,7 @@ impl Core {
                 return match func3 {
                     0 => Inst::ADDI,
                     1 => Inst::SLLI,
+                    6 => Inst::ORI,
                     _ => {
                         trace::execpt_handle(self.pc, word);
                         panic!();
@@ -265,7 +275,7 @@ impl Core {
 
                 match inst {
                     Inst::ADDI => {
-                        // println!("imm: {}, rd: {}, rs1: {}, x[rs1]: {} ", imm, rd, rs1, self.x[rs1 as usize]);
+                        // println!("imm: {}, rd: {}, rs1: {}, x[rs1]: {:08x} ", imm, rd, rs1, self.x[rs1 as usize]);
                         if rd > 0 {
                             self.x[rd as usize] = self.x[rs1 as usize].wrapping_add(imm);
                         }
@@ -274,6 +284,11 @@ impl Core {
                         if rd > 0 {
                             let shamt = (imm & 0x1F) as u32;
                             self.x[rd as usize] = self.x[rs1 as usize] << shamt;
+                        }
+                    }
+                    Inst::ORI => {
+                        if rd > 0 {
+                            self.x[rd as usize] = self.x[rs1 as usize] | imm;
                         }
                     }
                     Inst::JALR => {
