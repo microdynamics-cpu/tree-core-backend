@@ -15,38 +15,38 @@ impl Regfile {
 
     pub fn val(&self, v: &str) -> i32 {
         match v {
-            "zero" => 0,
-            "ra" => 1,
-            "sp" => 2,
-            "gp" => 3,
-            "tp" => 4,
-            "t0" => 5,
-            "t1" => 6,
-            "t2" => 7,
-            "s0" | "fp" => 8,
-            "s1" => 9,
-            "a0" => 10,
-            "a1" => 11,
-            "a2" => 12,
-            "a3" => 13,
-            "a4" => 14,
-            "a5" => 15,
-            "a6" => 16,
-            "a7" => 17,
-            "s2" => 18,
-            "s3" => 19,
-            "s4" => 20,
-            "s5" => 21,
-            "s6" => 22,
-            "s7" => 23,
-            "s8" => 24,
-            "s9" => 25,
-            "s10" => 26,
-            "s11" => 27,
-            "t3" => 28,
-            "t4" => 29,
-            "t5" => 30,
-            "t6" => 31,
+            "zero" => self.x[0],
+            "ra" => self.x[1],
+            "sp" => self.x[2],
+            "gp" => self.x[3],
+            "tp" => self.x[4],
+            "t0" => self.x[5],
+            "t1" => self.x[6],
+            "t2" => self.x[7],
+            "s0" | "fp" => self.x[8],
+            "s1" => self.x[9],
+            "a0" => self.x[10],
+            "a1" => self.x[11],
+            "a2" => self.x[12],
+            "a3" => self.x[13],
+            "a4" => self.x[14],
+            "a5" => self.x[15],
+            "a6" => self.x[16],
+            "a7" => self.x[17],
+            "s2" => self.x[18],
+            "s3" => self.x[19],
+            "s4" => self.x[20],
+            "s5" => self.x[21],
+            "s6" => self.x[22],
+            "s7" => self.x[23],
+            "s8" => self.x[24],
+            "s9" => self.x[25],
+            "s10" => self.x[26],
+            "s11" => self.x[27],
+            "t3" => self.x[28],
+            "t4" => self.x[29],
+            "t5" => self.x[30],
+            "t6" => self.x[31],
             _ => panic!(),
         }
     }
@@ -57,33 +57,40 @@ pub struct Core {
     pc: u32,
     csr: [u32; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
+    inst_num: u32,
 }
 
 enum Inst {
-    ADDI,
-    ORI,
-    SLLI,
+    LUI,
+    AUIPC,
     JAL,
     JALR,
-    CSRRS,
-    CSRRW,
-    CSRRWI,
     BEQ,
     BNE,
     BLT,
-    LUI,
-    AUIPC,
+    BGE,
+    BLTU,
+    BGEU,
+    ADDI,
+    ORI,
+    SLLI,
+    SRAI,
+    ADD,
+    SUB,
+    CSRRS,
+    CSRRW,
+    CSRRWI,
     MRET,
     FENCE,
 }
 
 enum InstType {
-    I,
     R,
-    J,
+    I,
+    C,
     B,
     U,
-    C,
+    J,
 }
 
 // enum Opcode {
@@ -92,19 +99,25 @@ enum InstType {
 
 fn get_inst_name(inst: &Inst) -> &'static str {
     match inst {
-        Inst::ADDI => "ADDI",
-        Inst::ORI => "ORI",
-        Inst::SLLI => "SLLI",
+        Inst::LUI => "LUI",
+        Inst::AUIPC => "AUIPC",
         Inst::JAL => "JAL",
         Inst::JALR => "JALR",
-        Inst::CSRRS => "CSRRS",
-        Inst::CSRRW => "CSRRW",
-        Inst::CSRRWI => "CSRRWI",
         Inst::BEQ => "BEQ",
         Inst::BNE => "BNE",
         Inst::BLT => "BLT",
-        Inst::LUI => "LUI",
-        Inst::AUIPC => "AUIPC",
+        Inst::BGE => "BGE",
+        Inst::BLTU => "BLTU",
+        Inst::BGEU => "BGEU",
+        Inst::ADDI => "ADDI",
+        Inst::ORI => "ORI",
+        Inst::SLLI => "SLLI",
+        Inst::SRAI => "SRAI",
+        Inst::ADD => "ADD",
+        Inst::SUB => "SUB",
+        Inst::CSRRS => "CSRRS",
+        Inst::CSRRW => "CSRRW",
+        Inst::CSRRWI => "CSRRWI",
         Inst::MRET => "MRET",
         Inst::FENCE => "FENCE",
     }
@@ -112,11 +125,11 @@ fn get_inst_name(inst: &Inst) -> &'static str {
 
 fn get_instruction_type(inst: &Inst) -> InstType {
     match inst {
-        Inst::ADDI | Inst::ORI | Inst::SLLI | Inst::JALR | Inst::FENCE => InstType::I,
-        Inst::MRET => InstType::R,
+        Inst::ADDI | Inst::ORI | Inst::SLLI | Inst::SRAI | Inst::JALR | Inst::FENCE => InstType::I,
+        Inst::ADD | Inst::SUB | Inst::MRET => InstType::R,
         Inst::JAL => InstType::J,
         Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
-        Inst::BEQ | Inst::BNE | Inst::BLT => InstType::B,
+        Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
     }
 }
@@ -128,6 +141,7 @@ impl Core {
             pc: 0x1000,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
+            inst_num: 0u32,
         }
     }
 
@@ -147,14 +161,15 @@ impl Core {
 
             if end {
                 match self.regfile.x[10] {
-                    0 => println!("Test Passed"),
+                    0 => println!("Test Passed, inst_num: {}", self.inst_num),
                     _ => println!("Test Failed"),
                 };
                 break;
             }
 
             self.tick();
-            // println!("ra: {:08x} t2: {:08x} a4: {:08x}", self.regfile.x[1], self.regfile.x[7], self.regfile.x[14]);
+            self.inst_num += 1;
+            // println!("t0: {:08x}", self.regfile.val("t0"));
         }
     }
 
@@ -236,7 +251,7 @@ impl Core {
         let inst = Word::new(word);
         let opcode = inst.val(6, 0);
         let func3 = inst.val(14, 12);
-        // let func7 = (word >> 25) & 0x7F;
+        let func7 = inst.val(31, 25);
         match opcode {
             0x0F => {
                 return match func3 {
@@ -250,6 +265,10 @@ impl Core {
                 return match func3 {
                     0 => Inst::ADDI,
                     1 => Inst::SLLI,
+                    5 => match func7 {
+                        0x20 => Inst::SRAI,
+                        _ => panic!(),
+                    },
                     6 => Inst::ORI,
                     _ => {
                         trace::execpt_handle(self.pc, word);
@@ -260,6 +279,16 @@ impl Core {
             0x17 => {
                 return Inst::AUIPC;
             }
+            0x33 => {
+                return match func3 {
+                    0 => match func7 {
+                        0x00 => Inst::ADD,
+                        0x20 => Inst::SUB,
+                        _ => panic!(),
+                    },
+                    _ => panic!(),
+                }
+            }
             0x37 => {
                 return Inst::LUI;
             }
@@ -268,6 +297,9 @@ impl Core {
                     0 => Inst::BEQ,
                     1 => Inst::BNE,
                     4 => Inst::BLT,
+                    5 => Inst::BGE,
+                    6 => Inst::BLTU,
+                    7 => Inst::BGEU,
                     _ => {
                         trace::execpt_handle(self.pc, word);
                         panic!();
@@ -329,16 +361,23 @@ impl Core {
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] << shamt;
                         }
                     }
+                    Inst::SRAI => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x1F) as u32;
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] >> shamt;
+                        }
+                    }
                     Inst::ORI => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] | imm;
                         }
                     }
                     Inst::JALR => {
-                        if rd > 0 {
-                            self.regfile.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
-                        }
+                        let tmp_pc = self.pc; // important!!!, if rs1 == rd
                         self.pc = (self.regfile.x[rs1 as usize] as u32).wrapping_add(imm as u32);
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = tmp_pc as i32;
+                        }
                     }
                     Inst::FENCE => {
                         // no impl
@@ -353,10 +392,22 @@ impl Core {
                 }
             }
             InstType::R => {
-                // let rd = (word >> 7) & 0x1F; // [11:7]
-                // let rs1 = (word >> 15) & 0x1F; // [19:15]
-                // let rs2 = (word >> 20) & 0x1F; // [24:20]
+                let rd = inst_wrap.val(11, 7);
+                let rs1 = inst_wrap.val(19, 15);
+                let rs2 = inst_wrap.val(24, 20);
                 match inst {
+                    Inst::ADD => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_add(self.regfile.x[rs2 as usize]);
+                        }
+                    }
+                    Inst::SUB => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_sub(self.regfile.x[rs2 as usize]);
+                        }
+                    }
                     Inst::MRET => {}
                     _ => {
                         panic!()
@@ -404,6 +455,23 @@ impl Core {
                         // println!("rs1: {}, rs2: {}", rs1, rs2);
                         // trace::execpt_handle(self.pc, word);
                         if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    Inst::BGE => {
+                        if self.regfile.x[rs1 as usize] >= self.regfile.x[rs2 as usize] {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    Inst::BLTU => {
+                        if (self.regfile.x[rs1 as usize] as u32)
+                            < (self.regfile.x[rs2 as usize] as u32)
+                        {
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        }
+                    }
+                    Inst::BGEU => {
+                        if (self.regfile.x[rs1 as usize] as u32) >= (self.regfile.x[rs2 as usize] as u32) {
                             self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                         }
                     }
