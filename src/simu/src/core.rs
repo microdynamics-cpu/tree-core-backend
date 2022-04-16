@@ -4,8 +4,56 @@ use crate::trace;
 const MEM_CAPACITY: usize = 1024 * 16;
 const CSR_CAPACITY: usize = 4096;
 
-pub struct Core {
+pub struct Regfile {
     x: [i32; 32],
+}
+
+impl Regfile {
+    pub fn new() -> Self {
+        Regfile { x: [0; 32] }
+    }
+
+    pub fn val(&self, v: &str) -> i32 {
+        match v {
+            "zero" => 0,
+            "ra" => 1,
+            "sp" => 2,
+            "gp" => 3,
+            "tp" => 4,
+            "t0" => 5,
+            "t1" => 6,
+            "t2" => 7,
+            "s0" | "fp" => 8,
+            "s1" => 9,
+            "a0" => 10,
+            "a1" => 11,
+            "a2" => 12,
+            "a3" => 13,
+            "a4" => 14,
+            "a5" => 15,
+            "a6" => 16,
+            "a7" => 17,
+            "s2" => 18,
+            "s3" => 19,
+            "s4" => 20,
+            "s5" => 21,
+            "s6" => 22,
+            "s7" => 23,
+            "s8" => 24,
+            "s9" => 25,
+            "s10" => 26,
+            "s11" => 27,
+            "t3" => 28,
+            "t4" => 29,
+            "t5" => 30,
+            "t6" => 31,
+            _ => panic!(),
+        }
+    }
+}
+
+pub struct Core {
+    regfile: Regfile,
     pc: u32,
     csr: [u32; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
@@ -76,7 +124,7 @@ fn get_instruction_type(inst: &Inst) -> InstType {
 impl Core {
     pub fn new() -> Self {
         Core {
-            x: [0; 32],
+            regfile: Regfile::new(),
             pc: 0x1000,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
@@ -89,14 +137,6 @@ impl Core {
         }
 
         self.pc = 0x1000;
-        // for v in self.csr.iter() {
-        //     println!("csr: {}", v);
-        // }
-        // for v in self.x.iter() {
-        //     println!("x: {}", v);
-        // }
-
-        // panic!();
 
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
@@ -106,7 +146,7 @@ impl Core {
             };
 
             if end {
-                match self.x[10] {
+                match self.regfile.x[10] {
                     0 => println!("Test Passed"),
                     _ => println!("Test Failed"),
                 };
@@ -114,12 +154,12 @@ impl Core {
             }
 
             self.tick();
-            // println!("ra: {:08x} t2: {:08x} a4: {:08x}", self.x[1], self.x[7], self.x[14]);
+            // println!("ra: {:08x} t2: {:08x} a4: {:08x}", self.regfile.x[1], self.regfile.x[7], self.regfile.x[14]);
         }
     }
 
     fn tick(&mut self) {
-        // for v in self.x.iter() {
+        // for v in self.regfile.x.iter() {
         //     println!("x: {:x}", v);
         // }
 
@@ -156,7 +196,7 @@ impl Core {
                 return (match inst.val(31, 31) {
                     1 => 0xFFFF_F800,
                     0 => 0,
-                    _ => panic!()
+                    _ => panic!(),
                 } | (inst.pos(30, 20, 0))) as i32;
             }
             InstType::J => {
@@ -167,7 +207,7 @@ impl Core {
                 return (match inst.val(31, 31) {
                     1 => 0xFFF0_0000,
                     0 => 0,
-                    _ => panic!()
+                    _ => panic!(),
                 } | (inst.pos(19, 12, 12))
                     | (inst.pos(20, 20, 11))
                     | (inst.pos(30, 21, 1))) as i32;
@@ -180,11 +220,12 @@ impl Core {
                 return (match inst.val(31, 31) {
                     1 => 0xFFFF_F800,
                     0 => 0,
-                    _ => panic!()
+                    _ => panic!(),
                 } | (inst.pos(7, 7, 11))
                     | (inst.pos(30, 25, 5))
                     | (inst.pos(11, 8, 1))) as i32;
             }
+            InstType::U => (word & 0xFFFF_F000) as i32,
             _ => {
                 panic!();
             }
@@ -275,27 +316,29 @@ impl Core {
 
                 match inst {
                     Inst::ADDI => {
-                        // println!("imm: {}, rd: {}, rs1: {}, x[rs1]: {:08x} ", imm, rd, rs1, self.x[rs1 as usize]);
+                        // println!("imm: {}, rd: {}, rs1: {}, x[rs1]: {:08x} ", imm, rd, rs1, self.regfile.x[rs1 as usize]);
+                        // self.regfile.wt(rd: usize, rs1: usize, val: i32, op: &str)
                         if rd > 0 {
-                            self.x[rd as usize] = self.x[rs1 as usize].wrapping_add(imm);
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize].wrapping_add(imm);
                         }
                     }
                     Inst::SLLI => {
                         if rd > 0 {
                             let shamt = (imm & 0x1F) as u32;
-                            self.x[rd as usize] = self.x[rs1 as usize] << shamt;
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] << shamt;
                         }
                     }
                     Inst::ORI => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.x[rs1 as usize] | imm;
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] | imm;
                         }
                     }
                     Inst::JALR => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
+                            self.regfile.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
                         }
-                        self.pc = (self.x[rs1 as usize] as u32).wrapping_add(imm as u32);
+                        self.pc = (self.regfile.x[rs1 as usize] as u32).wrapping_add(imm as u32);
                     }
                     Inst::FENCE => {
                         // no impl
@@ -326,7 +369,7 @@ impl Core {
                 match inst {
                     Inst::JAL => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
+                            self.regfile.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
                         }
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                     }
@@ -344,23 +387,23 @@ impl Core {
                 let rs1 = inst_wrap.val(19, 15);
                 let rs2 = inst_wrap.val(24, 20);
                 let imm = Core::imm_ext_gen(InstType::B, word);
-                // println!("x[rs1]: {}, x[rs2]: {}", self.x[rs1 as usize], self.x[rs2 as usize]);
+                // println!("x[rs1]: {}, x[rs2]: {}", self.regfile.x[rs1 as usize], self.regfile.x[rs2 as usize]);
                 // panic!();
                 match inst {
                     Inst::BEQ => {
-                        if self.x[rs1 as usize] == self.x[rs2 as usize] {
+                        if self.regfile.x[rs1 as usize] == self.regfile.x[rs2 as usize] {
                             self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                         }
                     }
                     Inst::BNE => {
-                        if self.x[rs1 as usize] != self.x[rs2 as usize] {
+                        if self.regfile.x[rs1 as usize] != self.regfile.x[rs2 as usize] {
                             self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                         }
                     }
                     Inst::BLT => {
                         // println!("rs1: {}, rs2: {}", rs1, rs2);
                         // trace::execpt_handle(self.pc, word);
-                        if self.x[rs1 as usize] < self.x[rs2 as usize] {
+                        if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
                             self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                         }
                     }
@@ -371,16 +414,17 @@ impl Core {
             }
             InstType::U => {
                 let rd = inst_wrap.val(11, 7);
-                let imm = word & 0xFFFF_F000; // HACK: need to modfiy
+                let imm = Core::imm_ext_gen(InstType::U, word) as u32;
                 match inst {
                     Inst::AUIPC => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.pc.wrapping_sub(4).wrapping_add(imm) as i32;
+                            self.regfile.x[rd as usize] =
+                                self.pc.wrapping_sub(4).wrapping_add(imm) as i32;
                         }
                     }
                     Inst::LUI => {
                         if rd > 0 {
-                            self.x[rd as usize] = imm as i32;
+                            self.regfile.x[rd as usize] = imm as i32;
                         }
                     }
                     _ => {
@@ -397,20 +441,20 @@ impl Core {
                 match inst {
                     Inst::CSRRW => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
                         }
-                        self.csr[csr as usize] = self.x[rs1 as usize] as u32;
+                        self.csr[csr as usize] = self.regfile.x[rs1 as usize] as u32;
                     }
                     Inst::CSRRS => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
                         }
                         self.csr[csr as usize] =
-                            self.csr[csr as usize] | self.x[rs1 as usize] as u32;
+                            self.csr[csr as usize] | self.regfile.x[rs1 as usize] as u32;
                     }
                     Inst::CSRRWI => {
                         if rd > 0 {
-                            self.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
                         }
                         self.csr[csr as usize] = rs1;
                     }
