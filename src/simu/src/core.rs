@@ -79,9 +79,18 @@ enum Inst {
     ORI,
     ANDI,
     SLLI,
+    SRLI,
     SRAI,
     ADD,
     SUB,
+    SLL,
+    SLT,
+    SLTU,
+    XOR,
+    SRL,
+    SRA,
+    OR,
+    AND,
     CSRRS,
     CSRRW,
     CSRRWI,
@@ -122,9 +131,18 @@ fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::ORI => "ORI",
         Inst::ANDI => "ANDI",
         Inst::SLLI => "SLLI",
+        Inst::SRLI => "SRLI",
         Inst::SRAI => "SRAI",
         Inst::ADD => "ADD",
         Inst::SUB => "SUB",
+        Inst::SLL => "SLL",
+        Inst::SLT => "SLT",
+        Inst::SLTU => "SLTU",
+        Inst::XOR => "XOR",
+        Inst::SRL => "SRL",
+        Inst::SRA => "SRA",
+        Inst::OR => "OR",
+        Inst::AND => "AND",
         Inst::CSRRS => "CSRRS",
         Inst::CSRRW => "CSRRW",
         Inst::CSRRWI => "CSRRWI",
@@ -135,8 +153,29 @@ fn get_inst_name(inst: &Inst) -> &'static str {
 
 fn get_instruction_type(inst: &Inst) -> InstType {
     match inst {
-        Inst::ADDI | Inst::SLTI | Inst::SLTIU | Inst::XORI | Inst::ORI | Inst::ANDI | Inst::SLLI | Inst::SRAI | Inst::JALR | Inst:: LB | Inst::FENCE => InstType::I,
-        Inst::ADD | Inst::SUB | Inst::MRET => InstType::R,
+        Inst::ADDI
+        | Inst::SLTI
+        | Inst::SLTIU
+        | Inst::XORI
+        | Inst::ORI
+        | Inst::ANDI
+        | Inst::SLLI
+        | Inst::SRAI
+        | Inst::SRLI
+        | Inst::JALR
+        | Inst::LB
+        | Inst::FENCE => InstType::I,
+        Inst::ADD
+        | Inst::SUB
+        | Inst::SLL
+        | Inst::SLT
+        | Inst::SLTU
+        | Inst::XOR
+        | Inst::SRL
+        | Inst::SRA
+        | Inst::OR
+        | Inst::AND
+        | Inst::MRET => InstType::R,
         Inst::JAL => InstType::J,
         Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
         Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
@@ -270,13 +309,13 @@ impl Core {
             0x03 => {
                 return match func3 {
                     0 => Inst::LB,
-                    _ => panic!()
+                    _ => panic!(),
                 }
             }
             0x0F => {
                 return match func3 {
                     0 => Inst::FENCE,
-                    _ => panic!()
+                    _ => panic!(),
                 };
             }
             0x13 => {
@@ -287,6 +326,7 @@ impl Core {
                     3 => Inst::SLTIU,
                     4 => Inst::XORI,
                     5 => match func7 {
+                        0x0 => Inst::SRLI,
                         0x20 => Inst::SRAI,
                         _ => panic!(),
                     },
@@ -308,6 +348,17 @@ impl Core {
                         0x20 => Inst::SUB,
                         _ => panic!(),
                     },
+                    1 => Inst::SLL,
+                    2 => Inst::SLT,
+                    3 => Inst::SLTU,
+                    4 => Inst::XOR,
+                    5 => match func7 {
+                        0x00 => Inst::SRL,
+                        0x20 => Inst::SRA,
+                        _ => panic!(),
+                    },
+                    6 => Inst::OR,
+                    7 => Inst::AND,
                     _ => panic!(),
                 }
             }
@@ -414,6 +465,13 @@ impl Core {
                     Inst::ANDI => {
                         self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] & imm;
                     }
+                    Inst::SRLI => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x1F) as u32;
+                            self.regfile.x[rd as usize] =
+                                ((self.regfile.x[rs1 as usize] as u32) >> shamt) as i32;
+                        }
+                    }
                     Inst::SRAI => {
                         if rd > 0 {
                             let shamt = (imm & 0x1F) as u32;
@@ -428,7 +486,9 @@ impl Core {
                         }
                     }
                     Inst::LB => {
-                        self.regfile.x[rd as usize] = self.load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32) as i32;
+                        self.regfile.x[rd as usize] = self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
+                            as i32;
                     }
                     Inst::FENCE => {
                         // no impl
@@ -457,6 +517,63 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
                                 .wrapping_sub(self.regfile.x[rs2 as usize]);
+                        }
+                    }
+                    Inst::SLL => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_shl(self.regfile.x[rs2 as usize] as u32);
+                        }
+                    }
+                    Inst::SLT => {
+                        if rd > 0 {
+                            if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
+                                self.regfile.x[rd as usize] = 1;
+                            } else {
+                                self.regfile.x[rd as usize] = 0;
+                            }
+                        }
+                    }
+                    Inst::SLTU => {
+                        if rd > 0 {
+                            if (self.regfile.x[rs1 as usize] as u32)
+                                < (self.regfile.x[rs2 as usize] as u32)
+                            {
+                                self.regfile.x[rd as usize] = 1;
+                            } else {
+                                self.regfile.x[rd as usize] = 0;
+                            }
+                        }
+                    }
+                    Inst::XOR => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize] ^ self.regfile.x[rs2 as usize];
+                        }
+                    }
+                    Inst::SRL => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = ((self.regfile.x[rs1 as usize] as u32)
+                                .wrapping_shr(self.regfile.x[rs2 as usize] as u32))
+                                as i32;
+                        }
+                    }
+                    Inst::SRA => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_shr(self.regfile.x[rs2 as usize] as u32);
+                        }
+                    }
+                    Inst::OR => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize] | self.regfile.x[rs2 as usize];
+                        }
+                    }
+                    Inst::AND => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize] & self.regfile.x[rs2 as usize];
                         }
                     }
                     Inst::MRET => {}
@@ -522,7 +639,9 @@ impl Core {
                         }
                     }
                     Inst::BGEU => {
-                        if (self.regfile.x[rs1 as usize] as u32) >= (self.regfile.x[rs2 as usize] as u32) {
+                        if (self.regfile.x[rs1 as usize] as u32)
+                            >= (self.regfile.x[rs2 as usize] as u32)
+                        {
                             self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
                         }
                     }
