@@ -72,6 +72,13 @@ enum Inst {
     BLTU,
     BGEU,
     LB,
+    LH,
+    LW,
+    LBU,
+    LHU,
+    SB,
+    SH,
+    SW,
     ADDI,
     SLTI,
     SLTIU,
@@ -101,10 +108,11 @@ enum Inst {
 enum InstType {
     R,
     I,
-    C,
+    S,
     B,
     U,
     J,
+    C,
 }
 
 // enum Opcode {
@@ -124,6 +132,13 @@ fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::BLTU => "BLTU",
         Inst::BGEU => "BGEU",
         Inst::LB => "LB",
+        Inst::LH => "LH",
+        Inst::LW => "LW",
+        Inst::LBU => "LBU",
+        Inst::LHU => "LHU",
+        Inst::SB => "SB",
+        Inst::SH => "SH",
+        Inst::SW => "SW",
         Inst::ADDI => "ADDI",
         Inst::SLTI => "SLTI",
         Inst::SLTIU => "SLTIU",
@@ -153,18 +168,6 @@ fn get_inst_name(inst: &Inst) -> &'static str {
 
 fn get_instruction_type(inst: &Inst) -> InstType {
     match inst {
-        Inst::ADDI
-        | Inst::SLTI
-        | Inst::SLTIU
-        | Inst::XORI
-        | Inst::ORI
-        | Inst::ANDI
-        | Inst::SLLI
-        | Inst::SRAI
-        | Inst::SRLI
-        | Inst::JALR
-        | Inst::LB
-        | Inst::FENCE => InstType::I,
         Inst::ADD
         | Inst::SUB
         | Inst::SLL
@@ -176,10 +179,27 @@ fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::OR
         | Inst::AND
         | Inst::MRET => InstType::R,
-        Inst::JAL => InstType::J,
-        Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
+        Inst::ADDI
+        | Inst::SLTI
+        | Inst::SLTIU
+        | Inst::XORI
+        | Inst::ORI
+        | Inst::ANDI
+        | Inst::SLLI
+        | Inst::SRAI
+        | Inst::SRLI
+        | Inst::JALR
+        | Inst::LB
+        | Inst::LH
+        | Inst::LW
+        | Inst::LBU
+        | Inst::LHU
+        | Inst::FENCE => InstType::I,
+        Inst::SB | Inst::SH | Inst::SW => InstType::S,
         Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
+        Inst::JAL => InstType::J,
+        Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
     }
 }
 
@@ -218,7 +238,8 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
-            // println!("ra: {:08x} t2: {:08x} a4: {:08x}", self.regfile.val("ra"), self.regfile.val("t2"), self.regfile.val("a4"));
+            // println!("mem: {:08x}", self.mem[0x3000]);
+            // println!("ra: {:08x} t2: {:08x} a4: {:08x}\n", self.regfile.val("ra"), self.regfile.val("t2"), self.regfile.val("a4"));
         }
     }
 
@@ -244,15 +265,35 @@ impl Core {
         word
     }
 
-    fn load_byte(&mut self, addr: u32) -> u8 {
+    fn load_byte(&self, addr: u32) -> u8 {
         self.mem[addr as usize]
     }
 
-    fn load_word(&mut self, addr: u32) -> u32 {
+    fn load_halfword(&self, addr: u32) -> u16 {
+        ((self.mem[addr as usize + 1] as u16) << 8) | (self.mem[addr as usize] as u16)
+    }
+
+    fn load_word(&self, addr: u32) -> u32 {
         ((self.mem[addr as usize + 3] as u32) << 24)
             | ((self.mem[addr as usize + 2] as u32) << 16)
             | ((self.mem[addr as usize + 1] as u32) << 8)
             | (self.mem[addr as usize] as u32)
+    }
+
+    fn store_byte(&mut self, addr: u32, val: u8) {
+        self.mem[addr as usize] = val;
+    }
+
+    fn store_halfword(&mut self, addr: u32, val: u16) {
+        self.mem[addr as usize] = (val & 0xFFu16) as u8;
+        self.mem[addr as usize + 1] = ((val >> 8) & 0xFFu16) as u8;
+    }
+
+    fn store_word(&mut self, addr: u32, val: u32) {
+        self.mem[addr as usize] = (val & 0xFFu32) as u8;
+        self.mem[addr as usize + 1] = ((val >> 8) & 0xFFu32) as u8;
+        self.mem[addr as usize + 2] = ((val >> 16) & 0xFFu32) as u8;
+        self.mem[addr as usize + 3] = ((val >> 24) & 0xFFu32) as u8;
     }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i32 {
@@ -293,6 +334,14 @@ impl Core {
                     | (inst.pos(30, 25, 5))
                     | (inst.pos(11, 8, 1))) as i32;
             }
+            InstType::S => {
+                return (match inst.val(31, 31) {
+                    1 => 0xFFFF_F000,
+                    0 => 0,
+                    _ => panic!(),
+                } | (inst.pos(31, 25, 5))
+                    | (inst.pos(11, 7, 0))) as i32;
+            }
             InstType::U => (word & 0xFFFF_F000) as i32,
             _ => {
                 panic!();
@@ -309,6 +358,10 @@ impl Core {
             0x03 => {
                 return match func3 {
                     0 => Inst::LB,
+                    1 => Inst::LH,
+                    2 => Inst::LW,
+                    4 => Inst::LBU,
+                    5 => Inst::LHU,
                     _ => panic!(),
                 }
             }
@@ -340,6 +393,14 @@ impl Core {
             }
             0x17 => {
                 return Inst::AUIPC;
+            }
+            0x23 => {
+                return match func3 {
+                    0 => Inst::SB,
+                    1 => Inst::SH,
+                    2 => Inst::SW,
+                    _ => panic!(),
+                }
             }
             0x33 => {
                 return match func3 {
@@ -488,6 +549,27 @@ impl Core {
                     Inst::LB => {
                         self.regfile.x[rd as usize] = self
                             .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
+                            as i8 as i32; // NOTE: convert to i8 is important!!! different from 'LBU'
+                                          // println!("val: {}", self.regfile.x[rd as usize]);
+                    }
+                    Inst::LH => {
+                        self.regfile.x[rd as usize] = self
+                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
+                            as i16 as i32;
+                    }
+                    Inst::LW => {
+                        self.regfile.x[rd as usize] = self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
+                            as i32;
+                    }
+                    Inst::LBU => {
+                        self.regfile.x[rd as usize] = self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
+                            as i32;
+                    }
+                    Inst::LHU => {
+                        self.regfile.x[rd as usize] = self
+                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
                             as i32;
                     }
                     Inst::FENCE => {
@@ -580,6 +662,32 @@ impl Core {
                     _ => {
                         panic!()
                     }
+                }
+            }
+            InstType::S => {
+                let rs1 = inst_wrap.val(19, 15);
+                let rs2 = inst_wrap.val(24, 20);
+                let offset = Core::imm_ext_gen(InstType::S, word);
+                match inst {
+                    Inst::SB => {
+                        self.store_byte(
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
+                            (self.regfile.x[rs2 as usize] as u8) & 0xFFu8,
+                        );
+                    }
+                    Inst::SH => {
+                        self.store_halfword(
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
+                            (self.regfile.x[rs2 as usize] as u16) & 0xFFFFu16,
+                        );
+                    }
+                    Inst::SW => {
+                        self.store_word(
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
+                            self.regfile.x[rs2 as usize] as u32,
+                        );
+                    }
+                    _ => panic!(),
                 }
             }
             InstType::J => {
