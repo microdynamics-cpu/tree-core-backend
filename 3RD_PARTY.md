@@ -33,3 +33,8 @@ These components are installed via [Makefile](./Makefile). You can check all the
 * maintainer: takahirox
 * License: [MIT](https://github.com/takahirox/riscv-rust/blob/master/LICENSE)
 * repo: https://github.com/takahirox/riscv-rust
+
+### shrust
+* maintainer: phsym
+* License: [MIT](https://github.com/phsym/shrust/blob/master/LICENSE)
+* repo: https://github.com/phsym/shrust
