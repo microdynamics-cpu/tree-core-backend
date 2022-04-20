@@ -10,6 +10,7 @@ pub struct Core {
     csr: [u32; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
     inst_num: u32,
+    debug: bool,
 }
 
 enum Inst {
@@ -156,13 +157,14 @@ fn get_instruction_type(inst: &Inst) -> InstType {
 }
 
 impl Core {
-    pub fn new() -> Self {
+    pub fn new(val: bool) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0x1000,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
             inst_num: 0u32,
+            debug: val,
         }
     }
 
@@ -202,12 +204,14 @@ impl Core {
 
         let word = self.fetch();
         let inst = self.decode(word);
-        println!(
-            "PC:{:08x}, Word:{:08x}, Inst:{}",
-            self.pc.wrapping_sub(4),
-            word,
-            get_inst_name(&inst)
-        );
+        if self.debug {
+            println!(
+                "PC:{:08x}, Word:{:08x}, Inst:{}",
+                self.pc.wrapping_sub(4),
+                word,
+                get_inst_name(&inst)
+            );
+        }
         self.exec(word, inst);
     }
 
@@ -476,7 +480,9 @@ impl Core {
                         }
                     }
                     Inst::ANDI => {
-                        self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] & imm;
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] & imm;
+                        }
                     }
                     Inst::SRLI => {
                         if rd > 0 {
