@@ -56,6 +56,15 @@ enum Inst {
     CSRRWI,
     MRET,
     FENCE,
+    // RVM
+    MUL,
+    MULH,
+    MULHSU,
+    MULHU,
+    DIV,
+    DIVU,
+    REM,
+    REMU,
 }
 
 enum InstType {
@@ -116,6 +125,14 @@ fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::CSRRWI => "CSRRWI",
         Inst::MRET => "MRET",
         Inst::FENCE => "FENCE",
+        Inst::MUL => "MUL",
+        Inst::MULH => "MULH",
+        Inst::MULHSU => "MULHSU",
+        Inst::MULHU => "MULHU",
+        Inst::DIV => "DIV",
+        Inst::DIVU => "DIVU",
+        Inst::REM => "REM",
+        Inst::REMU => "REMU",
     }
 }
 
@@ -131,7 +148,15 @@ fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::SRA
         | Inst::OR
         | Inst::AND
-        | Inst::MRET => InstType::R,
+        | Inst::MRET
+        | Inst::MUL
+        | Inst::MULH
+        | Inst::MULHSU
+        | Inst::MULHU
+        | Inst::DIV
+        | Inst::DIVU
+        | Inst::REM
+        | Inst::REMU => InstType::R,
         Inst::ADDI
         | Inst::SLTI
         | Inst::SLTIU
@@ -362,20 +387,46 @@ impl Core {
                 return match func3 {
                     0 => match func7 {
                         0x00 => Inst::ADD,
+                        0x01 => Inst::MUL,
                         0x20 => Inst::SUB,
                         _ => panic!(),
                     },
-                    1 => Inst::SLL,
-                    2 => Inst::SLT,
-                    3 => Inst::SLTU,
-                    4 => Inst::XOR,
+                    1 => match func7 {
+                        0x00 => Inst::SLL,
+                        0x01 => Inst::MULH,
+                        _ => panic!(),
+                    },
+                    2 => match func7 {
+                        0x00 => Inst::SLT,
+                        0x01 => Inst::MULHSU,
+                        _ => panic!(),
+                    },
+                    3 => match func7 {
+                        0x00 => Inst::SLTU,
+                        0x01 => Inst::MULHU,
+                        _ => panic!(),
+                    },
+                    4 => match func7 {
+                        0x00 => Inst::XOR,
+                        0x01 => Inst::DIV,
+                        _ => panic!(),
+                    },
                     5 => match func7 {
                         0x00 => Inst::SRL,
+                        0x01 => Inst::DIVU,
                         0x20 => Inst::SRA,
                         _ => panic!(),
                     },
-                    6 => Inst::OR,
-                    7 => Inst::AND,
+                    6 => match func7 {
+                        0x00 => Inst::OR,
+                        0x01 => Inst::REM,
+                        _ => panic!(),
+                    },
+                    7 => match func7 {
+                        0x00 => Inst::AND,
+                        0x01 => Inst::REMU,
+                        _ => panic!(),
+                    },
                     _ => panic!(),
                 }
             }
@@ -553,6 +604,12 @@ impl Core {
                                 .wrapping_add(self.regfile.x[rs2 as usize]);
                         }
                     }
+                    Inst::MUL => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_mul(self.regfile.x[rs2 as usize]);
+                        }
+                    }
                     Inst::SUB => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
@@ -565,6 +622,13 @@ impl Core {
                                 .wrapping_shl(self.regfile.x[rs2 as usize] as u32);
                         }
                     }
+                    Inst::MULH => {
+                        if rd > 0 {
+                            let tmp = (self.regfile.x[rs1 as usize] as i64)
+                                * (self.regfile.x[rs2 as usize] as i64);
+                            self.regfile.x[rd as usize] = (tmp >> 32) as i32; // HACK: modify for 64bit
+                        }
+                    }
                     Inst::SLT => {
                         if rd > 0 {
                             if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
@@ -572,6 +636,13 @@ impl Core {
                             } else {
                                 self.regfile.x[rd as usize] = 0;
                             }
+                        }
+                    }
+                    Inst::MULHSU => {
+                        if rd > 0 {
+                            let tmp = (self.regfile.x[rs1 as usize] as i64)
+                                * (self.regfile.x[rs2 as usize] as u32 as i64);
+                            self.regfile.x[rd as usize] = (tmp >> 32) as i32;
                         }
                     }
                     Inst::SLTU => {
@@ -585,10 +656,26 @@ impl Core {
                             }
                         }
                     }
+                    Inst::MULHU => {
+                        if rd > 0 {
+                            let tmp = (self.regfile.x[rs1 as usize] as u32 as u64)
+                                * (self.regfile.x[rs2 as usize] as u32 as u64);
+                            self.regfile.x[rd as usize] = (tmp >> 32) as i32;
+                        }
+                    }
                     Inst::XOR => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] =
                                 self.regfile.x[rs1 as usize] ^ self.regfile.x[rs2 as usize];
+                        }
+                    }
+                    Inst::DIV => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i32,
+                                _ => self.regfile.x[rs1 as usize]
+                                    .wrapping_div(self.regfile.x[rs2 as usize]),
+                            }
                         }
                     }
                     Inst::SRL => {
@@ -596,6 +683,16 @@ impl Core {
                             self.regfile.x[rd as usize] = ((self.regfile.x[rs1 as usize] as u32)
                                 .wrapping_shr(self.regfile.x[rs2 as usize] as u32))
                                 as i32;
+                        }
+                    }
+                    Inst::DIVU => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i32,
+                                _ => (self.regfile.x[rs1 as usize] as u32)
+                                    .wrapping_div(self.regfile.x[rs2 as usize] as u32)
+                                    as i32,
+                            }
                         }
                     }
                     Inst::SRA => {
@@ -610,10 +707,31 @@ impl Core {
                                 self.regfile.x[rs1 as usize] | self.regfile.x[rs2 as usize];
                         }
                     }
+                    Inst::REM => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => self.regfile.x[rs1 as usize]
+                                    .wrapping_rem(self.regfile.x[rs2 as usize]),
+                            }
+                        }
+                    }
                     Inst::AND => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] =
                                 self.regfile.x[rs1 as usize] & self.regfile.x[rs2 as usize];
+                        }
+                    }
+                    Inst::REMU => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => {
+                                    ((self.regfile.x[rs1 as usize] as u32)
+                                        .wrapping_rem(self.regfile.x[rs2 as usize] as u32))
+                                        as i32
+                                }
+                            }
                         }
                     }
                     Inst::MRET => {}
