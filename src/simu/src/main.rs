@@ -31,7 +31,7 @@ fn main() -> std::io::Result<()> {
         let mut contents = vec![];
         file.read_to_end(&mut contents)?;
         // println!("file: {:?}", contents);
-        println!("test name: {}", filename);
+        // println!("test name: {}", filename);
         if args_len == 2 {
             let mut core = Core::new(false);
             core.run_simu(contents);

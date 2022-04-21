@@ -184,8 +184,8 @@ impl Core {
 
             if end {
                 match self.regfile.x[10] {
-                    0 => println!("Test Passed, inst_num: {}", self.inst_num),
-                    _ => println!("Test Failed"),
+                    0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
+                    _ => println!("\x1b[91mTest Failed\x1b[0m"),
                 };
                 break;
             }
