@@ -14,7 +14,16 @@ PROGRAM=$(dirname $(readlink -f "$0"))/../target/debug/treecore_simu
 
 unitTest() {
     RV32UI_P_TEST_BIN=`eval "find $RISCV_TESTS_BIN_PATH -type f -name \"rv32ui-p*\" ! -name \"*.dump\""`
+    RV32UM_P_TEST_BIN=`eval "find $RISCV_TESTS_BIN_PATH -type f -name \"rv32um-p*\" ! -name \"*.dump\""`
+    printf "$INFO===RV32UI TESTS===$END\n"
     for file in $RV32UI_P_TEST_BIN; do
+        val=`eval "basename $file"`
+        printf "$INFO[%16s] $END" $val
+        $PROGRAM $file
+    done
+
+    printf "$INFO===RV32UM TESTS===$END\n"
+    for file in $RV32UM_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
         $PROGRAM $file
