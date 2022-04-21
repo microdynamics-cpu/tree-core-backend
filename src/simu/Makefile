@@ -1,3 +1,8 @@
+SHELL=/bin/bash
+
+unit-test:
+	cargo build
+	./scripts/unit-test.sh
 
 setup:
 	./scripts/setup.sh
