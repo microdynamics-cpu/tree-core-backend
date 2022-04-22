@@ -29,6 +29,6 @@ unitTest() {
         $PROGRAM $file
     done
 }
-    
+
 
 unitTest
