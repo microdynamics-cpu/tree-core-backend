@@ -1,6 +1,8 @@
 use crate::data::Word;
+use crate::inst::{Inst, InstType, get_inst_name, get_instruction_type};
 use crate::regfile::Regfile;
-use crate::trace;
+use crate::decode::Decode;
+
 const MEM_CAPACITY: usize = 1024 * 16;
 const CSR_CAPACITY: usize = 4096;
 
@@ -11,174 +13,6 @@ pub struct Core {
     mem: [u8; MEM_CAPACITY],
     inst_num: u32,
     debug: bool,
-}
-
-enum Inst {
-    LUI,
-    AUIPC,
-    JAL,
-    JALR,
-    BEQ,
-    BNE,
-    BLT,
-    BGE,
-    BLTU,
-    BGEU,
-    LB,
-    LH,
-    LW,
-    LBU,
-    LHU,
-    SB,
-    SH,
-    SW,
-    ADDI,
-    SLTI,
-    SLTIU,
-    XORI,
-    ORI,
-    ANDI,
-    SLLI,
-    SRLI,
-    SRAI,
-    ADD,
-    SUB,
-    SLL,
-    SLT,
-    SLTU,
-    XOR,
-    SRL,
-    SRA,
-    OR,
-    AND,
-    CSRRS,
-    CSRRW,
-    CSRRWI,
-    MRET,
-    FENCE,
-    // RVM
-    MUL,
-    MULH,
-    MULHSU,
-    MULHU,
-    DIV,
-    DIVU,
-    REM,
-    REMU,
-}
-
-enum InstType {
-    R,
-    I,
-    S,
-    B,
-    U,
-    J,
-    C,
-}
-
-// enum Opcode {
-//     IMM,
-// }
-
-fn get_inst_name(inst: &Inst) -> &'static str {
-    match inst {
-        Inst::LUI => "LUI",
-        Inst::AUIPC => "AUIPC",
-        Inst::JAL => "JAL",
-        Inst::JALR => "JALR",
-        Inst::BEQ => "BEQ",
-        Inst::BNE => "BNE",
-        Inst::BLT => "BLT",
-        Inst::BGE => "BGE",
-        Inst::BLTU => "BLTU",
-        Inst::BGEU => "BGEU",
-        Inst::LB => "LB",
-        Inst::LH => "LH",
-        Inst::LW => "LW",
-        Inst::LBU => "LBU",
-        Inst::LHU => "LHU",
-        Inst::SB => "SB",
-        Inst::SH => "SH",
-        Inst::SW => "SW",
-        Inst::ADDI => "ADDI",
-        Inst::SLTI => "SLTI",
-        Inst::SLTIU => "SLTIU",
-        Inst::XORI => "XORI",
-        Inst::ORI => "ORI",
-        Inst::ANDI => "ANDI",
-        Inst::SLLI => "SLLI",
-        Inst::SRLI => "SRLI",
-        Inst::SRAI => "SRAI",
-        Inst::ADD => "ADD",
-        Inst::SUB => "SUB",
-        Inst::SLL => "SLL",
-        Inst::SLT => "SLT",
-        Inst::SLTU => "SLTU",
-        Inst::XOR => "XOR",
-        Inst::SRL => "SRL",
-        Inst::SRA => "SRA",
-        Inst::OR => "OR",
-        Inst::AND => "AND",
-        Inst::CSRRS => "CSRRS",
-        Inst::CSRRW => "CSRRW",
-        Inst::CSRRWI => "CSRRWI",
-        Inst::MRET => "MRET",
-        Inst::FENCE => "FENCE",
-        Inst::MUL => "MUL",
-        Inst::MULH => "MULH",
-        Inst::MULHSU => "MULHSU",
-        Inst::MULHU => "MULHU",
-        Inst::DIV => "DIV",
-        Inst::DIVU => "DIVU",
-        Inst::REM => "REM",
-        Inst::REMU => "REMU",
-    }
-}
-
-fn get_instruction_type(inst: &Inst) -> InstType {
-    match inst {
-        Inst::ADD
-        | Inst::SUB
-        | Inst::SLL
-        | Inst::SLT
-        | Inst::SLTU
-        | Inst::XOR
-        | Inst::SRL
-        | Inst::SRA
-        | Inst::OR
-        | Inst::AND
-        | Inst::MRET
-        | Inst::MUL
-        | Inst::MULH
-        | Inst::MULHSU
-        | Inst::MULHU
-        | Inst::DIV
-        | Inst::DIVU
-        | Inst::REM
-        | Inst::REMU => InstType::R,
-        Inst::ADDI
-        | Inst::SLTI
-        | Inst::SLTIU
-        | Inst::XORI
-        | Inst::ORI
-        | Inst::ANDI
-        | Inst::SLLI
-        | Inst::SRAI
-        | Inst::SRLI
-        | Inst::JALR
-        | Inst::LB
-        | Inst::LH
-        | Inst::LW
-        | Inst::LBU
-        | Inst::LHU
-        | Inst::FENCE => InstType::I,
-        Inst::SB | Inst::SH | Inst::SW => InstType::S,
-        Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
-        Inst::LUI | Inst::AUIPC => InstType::U,
-        Inst::JAL => InstType::J,
-        Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
-    }
 }
 
 impl Core {
@@ -217,18 +51,13 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
-            // println!("mem: {:08x}", self.mem[0x3000]);
-            // println!("ra: {:08x} t2: {:08x} a4: {:08x}\n", self.regfile.val("ra"), self.regfile.val("t2"), self.regfile.val("a4"));
         }
     }
 
     fn tick(&mut self) {
-        // for v in self.regfile.x.iter() {
-        //     println!("x: {:x}", v);
-        // }
 
         let word = self.fetch();
-        let inst = self.decode(word);
+        let inst = Decode::decode(self.pc, word);
         if self.debug {
             println!(
                 "PC:{:08x}, Word:{:08x}, Inst:{}",
@@ -326,154 +155,6 @@ impl Core {
             InstType::U => (word & 0xFFFF_F000) as i32,
             _ => {
                 panic!();
-            }
-        }
-    }
-
-    fn decode(&mut self, word: u32) -> Inst {
-        let inst = Word::new(word);
-        let opcode = inst.val(6, 0);
-        let func3 = inst.val(14, 12);
-        let func7 = inst.val(31, 25);
-        match opcode {
-            0x03 => {
-                return match func3 {
-                    0 => Inst::LB,
-                    1 => Inst::LH,
-                    2 => Inst::LW,
-                    4 => Inst::LBU,
-                    5 => Inst::LHU,
-                    _ => panic!(),
-                }
-            }
-            0x0F => {
-                return match func3 {
-                    0 => Inst::FENCE,
-                    _ => panic!(),
-                };
-            }
-            0x13 => {
-                return match func3 {
-                    0 => Inst::ADDI,
-                    1 => Inst::SLLI,
-                    2 => Inst::SLTI,
-                    3 => Inst::SLTIU,
-                    4 => Inst::XORI,
-                    5 => match func7 {
-                        0x0 => Inst::SRLI,
-                        0x20 => Inst::SRAI,
-                        _ => panic!(),
-                    },
-                    6 => Inst::ORI,
-                    7 => Inst::ANDI,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!();
-                    }
-                };
-            }
-            0x17 => {
-                return Inst::AUIPC;
-            }
-            0x23 => {
-                return match func3 {
-                    0 => Inst::SB,
-                    1 => Inst::SH,
-                    2 => Inst::SW,
-                    _ => panic!(),
-                }
-            }
-            0x33 => {
-                return match func3 {
-                    0 => match func7 {
-                        0x00 => Inst::ADD,
-                        0x01 => Inst::MUL,
-                        0x20 => Inst::SUB,
-                        _ => panic!(),
-                    },
-                    1 => match func7 {
-                        0x00 => Inst::SLL,
-                        0x01 => Inst::MULH,
-                        _ => panic!(),
-                    },
-                    2 => match func7 {
-                        0x00 => Inst::SLT,
-                        0x01 => Inst::MULHSU,
-                        _ => panic!(),
-                    },
-                    3 => match func7 {
-                        0x00 => Inst::SLTU,
-                        0x01 => Inst::MULHU,
-                        _ => panic!(),
-                    },
-                    4 => match func7 {
-                        0x00 => Inst::XOR,
-                        0x01 => Inst::DIV,
-                        _ => panic!(),
-                    },
-                    5 => match func7 {
-                        0x00 => Inst::SRL,
-                        0x01 => Inst::DIVU,
-                        0x20 => Inst::SRA,
-                        _ => panic!(),
-                    },
-                    6 => match func7 {
-                        0x00 => Inst::OR,
-                        0x01 => Inst::REM,
-                        _ => panic!(),
-                    },
-                    7 => match func7 {
-                        0x00 => Inst::AND,
-                        0x01 => Inst::REMU,
-                        _ => panic!(),
-                    },
-                    _ => panic!(),
-                }
-            }
-            0x37 => {
-                return Inst::LUI;
-            }
-            0x63 => {
-                return match func3 {
-                    0 => Inst::BEQ,
-                    1 => Inst::BNE,
-                    4 => Inst::BLT,
-                    5 => Inst::BGE,
-                    6 => Inst::BLTU,
-                    7 => Inst::BGEU,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!();
-                    }
-                }
-            }
-            0x67 => {
-                return Inst::JALR;
-            }
-            0x6F => {
-                return Inst::JAL;
-            }
-            0x73 => {
-                return match func3 {
-                    0 => {
-                        if word == 0x30200073 {
-                            return Inst::MRET;
-                        } else {
-                            panic!();
-                        }
-                    }
-                    1 => Inst::CSRRW,
-                    2 => Inst::CSRRS,
-                    5 => Inst::CSRRWI,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!()
-                    }
-                };
-            }
-            _ => {
-                trace::execpt_handle(self.pc, word);
-                panic!()
             }
         }
     }
