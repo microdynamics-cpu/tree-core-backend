@@ -12,18 +12,20 @@ pub struct Core {
     csr: [u32; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
     inst_num: u32,
+    xlen: u32,
     debug: bool,
 }
 
 impl Core {
-    pub fn new(val: bool) -> Self {
+    pub fn new(debug_val: bool, xlen_val: u32) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0x1000,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
             inst_num: 0u32,
-            debug: val,
+            xlen: xlen_val,
+            debug: debug_val,
         }
     }
 

@@ -32,14 +32,15 @@ fn main() -> std::io::Result<()> {
         file.read_to_end(&mut contents)?;
         // println!("file: {:?}", contents);
         // println!("test name: {}", filename);
-        if args_len == 2 {
-            let mut core = Core::new(false);
+        if args_len == 3 && &args[2] == "-x32" {
+            let mut core = Core::new(false, 32);
             core.run_simu(contents);
-        } else if args_len == 3 && &args[2] == "-d" {
-            let mut core = Core::new(true);
+        } else if args_len == 4 && &args[2] == "-x32" && &args[3] == "-d"{
+            let mut core = Core::new(true, 64);
             core.run_simu(contents);
-        } else {
-            panic!();
+        } else if args_len == 3 && &args[2] == "-x64" {
+            let mut core = Core::new(false, 64);
+            core.run_simu(contents);
         }
 
         Ok(())
