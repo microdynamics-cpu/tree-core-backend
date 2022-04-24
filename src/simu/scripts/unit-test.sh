@@ -34,7 +34,7 @@ unitTest() {
     for file in $RV64UI_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
-        # $PROGRAM $file "-x64"
+        $PROGRAM $file "-x64"
     done
 }
 

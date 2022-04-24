@@ -5,7 +5,7 @@ use crate::trace;
 pub struct Decode {}
 
 impl Decode {
-    pub fn decode(pc: u32, word: u32) -> Inst {
+    pub fn decode(pc: u64, word: u32) -> Inst {
         let inst = Word::new(word);
         let opcode = inst.val(6, 0);
         let func3 = inst.val(14, 12);

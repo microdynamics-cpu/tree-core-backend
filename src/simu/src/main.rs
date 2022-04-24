@@ -2,7 +2,7 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
-use treecore_simu::core::Core;
+use treecore_simu::core::{Core, XLen};
 use treecore_simu::shell::{Shell, ShellIO};
 
 fn interactive_mode() {
@@ -33,13 +33,13 @@ fn main() -> std::io::Result<()> {
         // println!("file: {:?}", contents);
         // println!("test name: {}", filename);
         if args_len == 3 && &args[2] == "-x32" {
-            let mut core = Core::new(false, 32);
+            let mut core = Core::new(false, XLen::X32);
             core.run_simu(contents);
         } else if args_len == 4 && &args[2] == "-x32" && &args[3] == "-d"{
-            let mut core = Core::new(true, 64);
+            let mut core = Core::new(true, XLen::X32);
             core.run_simu(contents);
         } else if args_len == 3 && &args[2] == "-x64" {
-            let mut core = Core::new(false, 64);
+            let mut core = Core::new(false, XLen::X64);
             core.run_simu(contents);
         }
 
