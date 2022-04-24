@@ -435,11 +435,17 @@ impl Core {
                     }
                     Inst::MULHSU => {
                         if rd > 0 {
-                            let tmp = (self.regfile.x[rs1 as usize] as i128)
-                                * (self.regfile.x[rs2 as usize] as u32 as i128);
                             self.regfile.x[rd as usize] = match self.xlen {
-                                XLen::X32 => (tmp >> 32) as i64,
-                                XLen::X64 => (tmp >> 64) as i64,
+                                XLen::X32 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                        * (self.regfile.x[rs2 as usize] as u32 as i128);
+                                    (tmp >> 32) as i64
+                                }
+                                XLen::X64 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                        * (self.regfile.x[rs2 as usize] as u64 as i128);
+                                    (tmp >> 64) as i64
+                                }
                             };
                         }
                     }
@@ -577,6 +583,13 @@ impl Core {
                                 as i64;
                         }
                     }
+                    Inst::MULW => {
+                        if rd > 0 {
+                            let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                * (self.regfile.x[rs2 as usize] as i128);
+                            self.regfile.x[rd as usize] = tmp as i32 as i64;
+                        }
+                    }
                     Inst::SUBW => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
@@ -593,6 +606,16 @@ impl Core {
                                 as i64;
                         }
                     }
+                    Inst::DIVW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i64,
+                                _ => (self.regfile.x[rs1 as usize] as i32)
+                                    .wrapping_div(self.regfile.x[rs2 as usize] as i32)
+                                    as i64,
+                            }
+                        }
+                    }
                     Inst::SRLW => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] =
@@ -601,12 +624,42 @@ impl Core {
                                     as i32 as i64;
                         }
                     }
+                    Inst::DIVUW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i64,
+                                _ => (self.regfile.x[rs1 as usize] as u32)
+                                    .wrapping_div(self.regfile.x[rs2 as usize] as u32)
+                                    as i32 as i64,
+                            }
+                        }
+                    }
                     Inst::SRAW => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = (self.regfile.x[rs1 as usize] as i32)
                                 .wrapping_shr((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
                                 as i32
                                 as i64;
+                        }
+                    }
+                    Inst::REMW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => (self.regfile.x[rs1 as usize] as i32)
+                                    .wrapping_rem(self.regfile.x[rs2 as usize] as i32)
+                                    as i64,
+                            }
+                        }
+                    }
+                    Inst::REMUW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => (self.regfile.x[rs1 as usize] as u32)
+                                    .wrapping_rem(self.regfile.x[rs2 as usize] as u32)
+                                    as i32 as i64,
+                            }
                         }
                     }
                     Inst::MRET => {}

@@ -64,6 +64,12 @@ pub enum Inst {
     SLLW,
     SRLW,
     SRAW,
+    // RV64M addition
+    MULW,
+    DIVW,
+    DIVUW,
+    REMW,
+    REMUW,
 }
 
 pub enum InstType {
@@ -144,6 +150,11 @@ pub fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::SLLW => "SLLW",
         Inst::SRLW => "SRLW",
         Inst::SRAW => "SRAW",
+        Inst::MULW => "MULW",
+        Inst::DIVW => "DIVW",
+        Inst::DIVUW => "DIVUW",
+        Inst::REMW => "REMW",
+        Inst::REMUW => "REMUW",
     }
 }
 
@@ -172,7 +183,12 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::SUBW
         | Inst::SLLW
         | Inst::SRLW
-        | Inst::SRAW => InstType::R,
+        | Inst::SRAW
+        | Inst::MULW
+        | Inst::DIVW
+        | Inst::DIVUW
+        | Inst::REMW
+        | Inst::REMUW => InstType::R,
         Inst::ADDI
         | Inst::SLTI
         | Inst::SLTIU

@@ -128,18 +128,21 @@ impl Decode {
                     0 => {
                         match func7 {
                             0x00 => Inst::ADDW,
+                            0x01 => Inst::MULW,
                             0x20 => Inst::SUBW,
                             _ => panic!(),
                         }
                     }
                     1 => return Inst::SLLW,
-                    5 => {
-                        match func7 {
+                    4 => return Inst::DIVW,
+                    5 => match func7 {
                             0x00 => Inst::SRLW,
+                            0x01 => Inst::DIVUW,
                             0x20 => Inst::SRAW,
                             _ => panic!(),
                         }
-                    }
+                    6 => return Inst::REMW,
+                    7 => return Inst::REMUW,
                     _ => panic!(),
                 }
             }
