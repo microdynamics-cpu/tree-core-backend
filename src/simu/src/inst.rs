@@ -1,4 +1,5 @@
 pub enum Inst {
+    // RV32I
     LUI,
     AUIPC,
     JAL,
@@ -41,7 +42,7 @@ pub enum Inst {
     CSRRWI,
     MRET,
     FENCE,
-    // RVM
+    // RV32M
     MUL,
     MULH,
     MULHSU,
@@ -50,6 +51,19 @@ pub enum Inst {
     DIVU,
     REM,
     REMU,
+    // RV64I addition
+    LWU,
+    LD,
+    SD,
+    ADDIW,
+    SLLIW,
+    SRLIW,
+    SRAIW,
+    ADDW,
+    SUBW,
+    SLLW,
+    SRLW,
+    SRAW,
 }
 
 pub enum InstType {
@@ -118,6 +132,18 @@ pub fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::DIVU => "DIVU",
         Inst::REM => "REM",
         Inst::REMU => "REMU",
+        Inst::LWU => "LWU",
+        Inst::LD => "LD",
+        Inst::SD => "SD",
+        Inst::ADDIW => "ADDIW",
+        Inst::SLLIW => "SLLIW",
+        Inst::SRLIW => "SRLIW",
+        Inst::SRAIW => "SRAIW",
+        Inst::ADDW => "ADDW",
+        Inst::SUBW => "SUBW",
+        Inst::SLLW => "SLLW",
+        Inst::SRLW => "SRLW",
+        Inst::SRAW => "SRAW",
     }
 }
 
@@ -141,7 +167,12 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::DIV
         | Inst::DIVU
         | Inst::REM
-        | Inst::REMU => InstType::R,
+        | Inst::REMU 
+        | Inst::ADDW
+        | Inst::SUBW
+        | Inst::SLLW
+        | Inst::SRLW
+        | Inst::SRAW => InstType::R,
         Inst::ADDI
         | Inst::SLTI
         | Inst::SLTIU
@@ -157,8 +188,14 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::LW
         | Inst::LBU
         | Inst::LHU
-        | Inst::FENCE => InstType::I,
-        Inst::SB | Inst::SH | Inst::SW => InstType::S,
+        | Inst::FENCE
+        | Inst::LWU
+        | Inst::LD
+        | Inst::ADDIW 
+        | Inst::SLLIW
+        | Inst::SRLIW
+        | Inst::SRAIW => InstType::I,
+        Inst::SB | Inst::SH | Inst::SW | Inst::SD => InstType::S,
         Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
         Inst::JAL => InstType::J,

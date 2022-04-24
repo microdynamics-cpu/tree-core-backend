@@ -41,8 +41,10 @@ fn main() -> std::io::Result<()> {
         } else if args_len == 3 && &args[2] == "-x64" {
             let mut core = Core::new(false, XLen::X64);
             core.run_simu(contents);
+        } else if args_len == 4 && &args[2] == "-x64" && &args[3] == "-d"{
+            let mut core = Core::new(true, XLen::X64);
+            core.run_simu(contents);
         }
-
         Ok(())
     }
 }

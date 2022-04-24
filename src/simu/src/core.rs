@@ -93,10 +93,12 @@ impl Core {
     }
 
     fn load_word(&self, addr: u64) -> u32 {
-        ((self.load_byte(addr.wrapping_add(3)) as u32) << 24)
-            | ((self.load_byte(addr.wrapping_add(2)) as u32) << 16)
-            | ((self.load_byte(addr.wrapping_add(1)) as u32) << 8)
-            | (self.load_byte(addr) as u32)
+        ((self.load_halfword(addr.wrapping_add(2)) as u32) << 16)
+            | (self.load_halfword(addr) as u32)
+    }
+
+    fn load_doubleword(&self, addr: u64) -> u64 {
+        ((self.load_word(addr.wrapping_add(4)) as u64) << 32) | (self.load_word(addr) as u64)
     }
 
     fn store_byte(&mut self, addr: u64, val: u8) {
@@ -112,10 +114,13 @@ impl Core {
     }
 
     fn store_word(&mut self, addr: u64, val: u32) {
-        self.store_byte(addr, (val & 0xFFu32) as u8);
-        self.store_byte(addr.wrapping_add(1), ((val >> 8) & 0xFFu32) as u8);
-        self.store_byte(addr.wrapping_add(2), ((val >> 16) & 0xFFu32) as u8);
-        self.store_byte(addr.wrapping_add(3), ((val >> 24) & 0xFFu32) as u8);
+        self.store_halfword(addr, (val & 0xFFFFu32) as u16);
+        self.store_halfword(addr.wrapping_add(2), ((val >> 16) & 0xFFFFu32) as u16);
+    }
+
+    fn store_doubleword(&mut self, addr: u64, val: u64) {
+        self.store_word(addr, (val & 0xFFFF_FFFFFu64) as u32);
+        self.store_word(addr.wrapping_add(4), ((val >> 32) & 0xFFFF_FFFFu64) as u32);
     }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i64 {
@@ -283,6 +288,35 @@ impl Core {
                             }
                         }
                     }
+                    Inst::ADDIW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize].wrapping_add(imm)) as i32 as i64;
+                        }
+                    }
+                    Inst::SLLIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize].wrapping_shl(shamt) as i32 as i64;
+                        }
+                    }
+                    Inst::SRLIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as u64 as u32).wrapping_shr(shamt)
+                                    as i32 as i64;
+                        }
+                    }
+                    Inst::SRAIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as i32).wrapping_shr(shamt) as i32
+                                    as i64;
+                        }
+                    }
                     Inst::JALR => {
                         let tmp_pc = self.pc; // important!!!, if rs1 == rd
                         self.pc = (self.regfile.x[rs1 as usize] as u64).wrapping_add(imm as u64);
@@ -304,6 +338,11 @@ impl Core {
                     Inst::LW => {
                         self.regfile.x[rd as usize] = self
                             .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i32 as i64;
+                    }
+                    Inst::LD => {
+                        self.regfile.x[rd as usize] = self
+                            .load_doubleword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
                             as i64;
                     }
                     Inst::LBU => {
@@ -315,6 +354,11 @@ impl Core {
                         self.regfile.x[rd as usize] = self
                             .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
                             as i64;
+                    }
+                    Inst::LWU => {
+                        self.regfile.x[rd as usize] = self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as u32 as i64;
                     }
                     Inst::FENCE => {
                         // no impl
@@ -525,6 +569,46 @@ impl Core {
                             }
                         }
                     }
+                    Inst::ADDW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_add(self.regfile.x[rs2 as usize])
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::SUBW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_sub(self.regfile.x[rs2 as usize])
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::SLLW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = (self.regfile.x[rs1 as usize] as u64)
+                                .wrapping_shl((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::SRLW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as u64 as u32)
+                                    .wrapping_shr((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                    as i32 as i64;
+                        }
+                    }
+                    Inst::SRAW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = (self.regfile.x[rs1 as usize] as i32)
+                                .wrapping_shr((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                as i32
+                                as i64;
+                        }
+                    }
                     Inst::MRET => {}
                     _ => {
                         panic!()
@@ -545,13 +629,19 @@ impl Core {
                     Inst::SH => {
                         self.store_halfword(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
-                            (self.regfile.x[rs2 as usize] as u16) & 0xFFFFu16,
+                            (self.regfile.x[rs2 as usize] as u64 as u16) & 0xFFFFu16,
                         );
                     }
                     Inst::SW => {
                         self.store_word(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u32,
+                        );
+                    }
+                    Inst::SD => {
+                        self.store_doubleword(
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
+                            self.regfile.x[rs2 as usize] as u64,
                         );
                     }
                     _ => panic!(),

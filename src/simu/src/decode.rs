@@ -16,8 +16,10 @@ impl Decode {
                     0 => Inst::LB,
                     1 => Inst::LH,
                     2 => Inst::LW,
+                    3 => Inst::LD,
                     4 => Inst::LBU,
                     5 => Inst::LHU,
+                    6 => Inst::LWU,
                     _ => panic!(),
                 }
             }
@@ -50,11 +52,24 @@ impl Decode {
             0x17 => {
                 return Inst::AUIPC;
             }
+            0x1B => {
+                return match func3 {
+                    0 => Inst::ADDIW,
+                    1 => Inst::SLLIW,
+                    5 => match func7 {
+                        0x00 => Inst::SRLIW,
+                        0x20 => Inst::SRAIW,
+                        _ => panic!(),
+                    }
+                    _ => panic!(),
+                }
+            }
             0x23 => {
                 return match func3 {
                     0 => Inst::SB,
                     1 => Inst::SH,
                     2 => Inst::SW,
+                    3 => Inst::SD,
                     _ => panic!(),
                 }
             }
@@ -107,6 +122,26 @@ impl Decode {
             }
             0x37 => {
                 return Inst::LUI;
+            }
+            0x3B => {
+                return match func3 {
+                    0 => {
+                        match func7 {
+                            0x00 => Inst::ADDW,
+                            0x20 => Inst::SUBW,
+                            _ => panic!(),
+                        }
+                    }
+                    1 => return Inst::SLLW,
+                    5 => {
+                        match func7 {
+                            0x00 => Inst::SRLW,
+                            0x20 => Inst::SRAW,
+                            _ => panic!(),
+                        }
+                    }
+                    _ => panic!(),
+                }
             }
             0x63 => {
                 return match func3 {
