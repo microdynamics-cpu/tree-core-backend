@@ -1,13 +1,13 @@
 pub struct Regfile {
-    pub x: [i32; 32],
+    pub x: [i64; 32],
 }
 
 impl Regfile {
     pub fn new() -> Self {
-        Regfile { x: [0; 32] }
+        Regfile { x: [0i64; 32] }
     }
 
-    pub fn val(&self, v: &str) -> i32 {
+    pub fn val(&self, v: &str) -> i64 {
         match v {
             "zero" => self.x[0],
             "ra" => self.x[1],

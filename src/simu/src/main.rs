@@ -1,8 +1,8 @@
-use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
-use treecore_simu::core::Core;
+use clap::Parser;
+use treecore_simu::core::{Core, XLen};
 use treecore_simu::shell::{Shell, ShellIO};
 
 fn interactive_mode() {
@@ -18,30 +18,45 @@ fn interactive_mode() {
     shell.run_loop(&mut ShellIO::default());
 }
 
+
+/// RISCV ISA Simulator Component
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Name of the bin file to simulate
+    #[clap(short, long)]
+    bin: String,
+
+    /// Output the trace info
+    #[clap(short, long)]
+    debug: bool,
+
+    /// Bit width of the processor
+    #[clap(short, long)]
+    xlen: String,
+
+    /// Interactive mode
+    #[clap(short, long)]
+    inter: bool,
+}
+
 fn main() -> std::io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let args_len = args.len();
-    if args_len < 2 {
-        // eprint!("usage: treecore-simu file.bin\n");
+    let args = Args::parse();
+    
+    if args.inter {
         interactive_mode();
         return Ok(());
-    } else {
-        let filename = &args[1];
-        let mut file = File::open(filename)?;
-        let mut contents = vec![];
-        file.read_to_end(&mut contents)?;
-        // println!("file: {:?}", contents);
-        // println!("test name: {}", filename);
-        if args_len == 2 {
-            let mut core = Core::new(false);
-            core.run_simu(contents);
-        } else if args_len == 3 && &args[2] == "-d" {
-            let mut core = Core::new(true);
-            core.run_simu(contents);
-        } else {
-            panic!();
-        }
-
-        Ok(())
     }
+
+    let mut file = File::open(args.bin)?;
+    let mut contents = vec![];
+    file.read_to_end(&mut contents)?;
+    let mut core = Core::new(args.debug, match args.xlen.as_str() {
+        "x32" => XLen::X32,
+        "x64" => XLen::X64,
+        _ => panic!(),
+    });
+    core.run_simu(contents);
+
+    Ok(())
 }
