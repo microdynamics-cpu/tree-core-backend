@@ -1,195 +1,38 @@
 use crate::data::Word;
+use crate::decode::Decode;
+use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
 use crate::regfile::Regfile;
-use crate::trace;
+use crate::trace::{inst_trace, regfile_trace};
+
 const MEM_CAPACITY: usize = 1024 * 16;
 const CSR_CAPACITY: usize = 4096;
 
 pub struct Core {
     regfile: Regfile,
-    pc: u32,
-    csr: [u32; CSR_CAPACITY],
+    pc: u64,
+    csr: [u64; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
-    inst_num: u32,
+    inst_num: u64,
+    xlen: XLen,
     debug: bool,
 }
 
-enum Inst {
-    LUI,
-    AUIPC,
-    JAL,
-    JALR,
-    BEQ,
-    BNE,
-    BLT,
-    BGE,
-    BLTU,
-    BGEU,
-    LB,
-    LH,
-    LW,
-    LBU,
-    LHU,
-    SB,
-    SH,
-    SW,
-    ADDI,
-    SLTI,
-    SLTIU,
-    XORI,
-    ORI,
-    ANDI,
-    SLLI,
-    SRLI,
-    SRAI,
-    ADD,
-    SUB,
-    SLL,
-    SLT,
-    SLTU,
-    XOR,
-    SRL,
-    SRA,
-    OR,
-    AND,
-    CSRRS,
-    CSRRW,
-    CSRRWI,
-    MRET,
-    FENCE,
-    // RVM
-    MUL,
-    MULH,
-    MULHSU,
-    MULHU,
-    DIV,
-    DIVU,
-    REM,
-    REMU,
-}
-
-enum InstType {
-    R,
-    I,
-    S,
-    B,
-    U,
-    J,
-    C,
-}
-
-// enum Opcode {
-//     IMM,
-// }
-
-fn get_inst_name(inst: &Inst) -> &'static str {
-    match inst {
-        Inst::LUI => "LUI",
-        Inst::AUIPC => "AUIPC",
-        Inst::JAL => "JAL",
-        Inst::JALR => "JALR",
-        Inst::BEQ => "BEQ",
-        Inst::BNE => "BNE",
-        Inst::BLT => "BLT",
-        Inst::BGE => "BGE",
-        Inst::BLTU => "BLTU",
-        Inst::BGEU => "BGEU",
-        Inst::LB => "LB",
-        Inst::LH => "LH",
-        Inst::LW => "LW",
-        Inst::LBU => "LBU",
-        Inst::LHU => "LHU",
-        Inst::SB => "SB",
-        Inst::SH => "SH",
-        Inst::SW => "SW",
-        Inst::ADDI => "ADDI",
-        Inst::SLTI => "SLTI",
-        Inst::SLTIU => "SLTIU",
-        Inst::XORI => "XORI",
-        Inst::ORI => "ORI",
-        Inst::ANDI => "ANDI",
-        Inst::SLLI => "SLLI",
-        Inst::SRLI => "SRLI",
-        Inst::SRAI => "SRAI",
-        Inst::ADD => "ADD",
-        Inst::SUB => "SUB",
-        Inst::SLL => "SLL",
-        Inst::SLT => "SLT",
-        Inst::SLTU => "SLTU",
-        Inst::XOR => "XOR",
-        Inst::SRL => "SRL",
-        Inst::SRA => "SRA",
-        Inst::OR => "OR",
-        Inst::AND => "AND",
-        Inst::CSRRS => "CSRRS",
-        Inst::CSRRW => "CSRRW",
-        Inst::CSRRWI => "CSRRWI",
-        Inst::MRET => "MRET",
-        Inst::FENCE => "FENCE",
-        Inst::MUL => "MUL",
-        Inst::MULH => "MULH",
-        Inst::MULHSU => "MULHSU",
-        Inst::MULHU => "MULHU",
-        Inst::DIV => "DIV",
-        Inst::DIVU => "DIVU",
-        Inst::REM => "REM",
-        Inst::REMU => "REMU",
-    }
-}
-
-fn get_instruction_type(inst: &Inst) -> InstType {
-    match inst {
-        Inst::ADD
-        | Inst::SUB
-        | Inst::SLL
-        | Inst::SLT
-        | Inst::SLTU
-        | Inst::XOR
-        | Inst::SRL
-        | Inst::SRA
-        | Inst::OR
-        | Inst::AND
-        | Inst::MRET
-        | Inst::MUL
-        | Inst::MULH
-        | Inst::MULHSU
-        | Inst::MULHU
-        | Inst::DIV
-        | Inst::DIVU
-        | Inst::REM
-        | Inst::REMU => InstType::R,
-        Inst::ADDI
-        | Inst::SLTI
-        | Inst::SLTIU
-        | Inst::XORI
-        | Inst::ORI
-        | Inst::ANDI
-        | Inst::SLLI
-        | Inst::SRAI
-        | Inst::SRLI
-        | Inst::JALR
-        | Inst::LB
-        | Inst::LH
-        | Inst::LW
-        | Inst::LBU
-        | Inst::LHU
-        | Inst::FENCE => InstType::I,
-        Inst::SB | Inst::SH | Inst::SW => InstType::S,
-        Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
-        Inst::LUI | Inst::AUIPC => InstType::U,
-        Inst::JAL => InstType::J,
-        Inst::CSRRS | Inst::CSRRW | Inst::CSRRWI => InstType::C,
-    }
+#[derive(Debug)]
+pub enum XLen {
+    X32,
+    X64,
 }
 
 impl Core {
-    pub fn new(val: bool) -> Self {
+    pub fn new(debug_val: bool, xlen_val: XLen) -> Self {
         Core {
             regfile: Regfile::new(),
-            pc: 0x1000,
+            pc: 0u64,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
-            inst_num: 0u32,
-            debug: val,
+            inst_num: 0u64,
+            xlen: xlen_val,
+            debug: debug_val,
         }
     }
 
@@ -199,11 +42,10 @@ impl Core {
         }
 
         self.pc = 0x1000;
-
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc) {
-                0x00000073 => true,
+                0x0000_0073 => true,
                 _ => false,
             };
 
@@ -217,27 +59,20 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
-            // println!("mem: {:08x}", self.mem[0x3000]);
-            // println!("ra: {:08x} t2: {:08x} a4: {:08x}\n", self.regfile.val("ra"), self.regfile.val("t2"), self.regfile.val("a4"));
         }
     }
 
     fn tick(&mut self) {
-        // for v in self.regfile.x.iter() {
-        //     println!("x: {:x}", v);
-        // }
-
         let word = self.fetch();
-        let inst = self.decode(word);
+        let inst = Decode::decode(self.pc, word);
         if self.debug {
-            println!(
-                "PC:{:08x}, Word:{:08x}, Inst:{}",
-                self.pc.wrapping_sub(4),
-                word,
-                get_inst_name(&inst)
-            );
+            inst_trace(self.pc, word, &inst);
         }
         self.exec(word, inst);
+        // regfile_trace(&self.regfile, "ra");
+        // regfile_trace(&self.regfile, "sp");
+        // regfile_trace(&self.regfile, "a4");
+        // regfile_trace(&self.regfile, "t2");
     }
 
     fn fetch(&mut self) -> u32 {
@@ -246,38 +81,49 @@ impl Core {
         word
     }
 
-    fn load_byte(&self, addr: u32) -> u8 {
-        self.mem[addr as usize]
+    fn load_byte(&self, addr: u64) -> u8 {
+        self.mem[match self.xlen {
+            XLen::X32 => addr & 0xFFFF_FFFF,
+            XLen::X64 => addr,
+        } as usize]
     }
 
-    fn load_halfword(&self, addr: u32) -> u16 {
-        ((self.mem[addr as usize + 1] as u16) << 8) | (self.mem[addr as usize] as u16)
+    fn load_halfword(&self, addr: u64) -> u16 {
+        ((self.load_byte(addr.wrapping_add(1)) as u16) << 8) | (self.load_byte(addr) as u16)
     }
 
-    fn load_word(&self, addr: u32) -> u32 {
-        ((self.mem[addr as usize + 3] as u32) << 24)
-            | ((self.mem[addr as usize + 2] as u32) << 16)
-            | ((self.mem[addr as usize + 1] as u32) << 8)
-            | (self.mem[addr as usize] as u32)
+    fn load_word(&self, addr: u64) -> u32 {
+        ((self.load_halfword(addr.wrapping_add(2)) as u32) << 16)
+            | (self.load_halfword(addr) as u32)
     }
 
-    fn store_byte(&mut self, addr: u32, val: u8) {
-        self.mem[addr as usize] = val;
+    fn load_doubleword(&self, addr: u64) -> u64 {
+        ((self.load_word(addr.wrapping_add(4)) as u64) << 32) | (self.load_word(addr) as u64)
     }
 
-    fn store_halfword(&mut self, addr: u32, val: u16) {
-        self.mem[addr as usize] = (val & 0xFFu16) as u8;
-        self.mem[addr as usize + 1] = ((val >> 8) & 0xFFu16) as u8;
+    fn store_byte(&mut self, addr: u64, val: u8) {
+        self.mem[match self.xlen {
+            XLen::X32 => addr & 0xFFFF_FFFF,
+            XLen::X64 => addr,
+        } as usize] = val;
     }
 
-    fn store_word(&mut self, addr: u32, val: u32) {
-        self.mem[addr as usize] = (val & 0xFFu32) as u8;
-        self.mem[addr as usize + 1] = ((val >> 8) & 0xFFu32) as u8;
-        self.mem[addr as usize + 2] = ((val >> 16) & 0xFFu32) as u8;
-        self.mem[addr as usize + 3] = ((val >> 24) & 0xFFu32) as u8;
+    fn store_halfword(&mut self, addr: u64, val: u16) {
+        self.store_byte(addr, (val & 0xFFu16) as u8);
+        self.store_byte(addr.wrapping_add(1), ((val >> 8) & 0xFFu16) as u8);
     }
 
-    fn imm_ext_gen(inst_type: InstType, word: u32) -> i32 {
+    fn store_word(&mut self, addr: u64, val: u32) {
+        self.store_halfword(addr, (val & 0xFFFFu32) as u16);
+        self.store_halfword(addr.wrapping_add(2), ((val >> 16) & 0xFFFFu32) as u16);
+    }
+
+    fn store_doubleword(&mut self, addr: u64, val: u64) {
+        self.store_word(addr, (val & 0xFFFF_FFFFFu64) as u32);
+        self.store_word(addr.wrapping_add(4), ((val >> 32) & 0xFFFF_FFFFu64) as u32);
+    }
+
+    fn imm_ext_gen(inst_type: InstType, word: u32) -> i64 {
         let inst = Word::new(word);
         match inst_type {
             InstType::I => {
@@ -287,7 +133,7 @@ impl Core {
                     1 => 0xFFFF_F800,
                     0 => 0,
                     _ => panic!(),
-                } | (inst.pos(30, 20, 0))) as i32;
+                } | (inst.pos(30, 20, 0))) as i32 as i64;
             }
             InstType::J => {
                 // imm[31:20] = [31]
@@ -300,7 +146,7 @@ impl Core {
                     _ => panic!(),
                 } | (inst.pos(19, 12, 12))
                     | (inst.pos(20, 20, 11))
-                    | (inst.pos(30, 21, 1))) as i32;
+                    | (inst.pos(30, 21, 1))) as i32 as i64;
             }
             InstType::B => {
                 // imm[31:12] = [31]
@@ -313,7 +159,7 @@ impl Core {
                     _ => panic!(),
                 } | (inst.pos(7, 7, 11))
                     | (inst.pos(30, 25, 5))
-                    | (inst.pos(11, 8, 1))) as i32;
+                    | (inst.pos(11, 8, 1))) as i32 as i64;
             }
             InstType::S => {
                 return (match inst.val(31, 31) {
@@ -321,159 +167,11 @@ impl Core {
                     0 => 0,
                     _ => panic!(),
                 } | (inst.pos(31, 25, 5))
-                    | (inst.pos(11, 7, 0))) as i32;
+                    | (inst.pos(11, 7, 0))) as i32 as i64;
             }
-            InstType::U => (word & 0xFFFF_F000) as i32,
+            InstType::U => (word & 0xFFFF_F000) as i32 as i64,
             _ => {
                 panic!();
-            }
-        }
-    }
-
-    fn decode(&mut self, word: u32) -> Inst {
-        let inst = Word::new(word);
-        let opcode = inst.val(6, 0);
-        let func3 = inst.val(14, 12);
-        let func7 = inst.val(31, 25);
-        match opcode {
-            0x03 => {
-                return match func3 {
-                    0 => Inst::LB,
-                    1 => Inst::LH,
-                    2 => Inst::LW,
-                    4 => Inst::LBU,
-                    5 => Inst::LHU,
-                    _ => panic!(),
-                }
-            }
-            0x0F => {
-                return match func3 {
-                    0 => Inst::FENCE,
-                    _ => panic!(),
-                };
-            }
-            0x13 => {
-                return match func3 {
-                    0 => Inst::ADDI,
-                    1 => Inst::SLLI,
-                    2 => Inst::SLTI,
-                    3 => Inst::SLTIU,
-                    4 => Inst::XORI,
-                    5 => match func7 {
-                        0x0 => Inst::SRLI,
-                        0x20 => Inst::SRAI,
-                        _ => panic!(),
-                    },
-                    6 => Inst::ORI,
-                    7 => Inst::ANDI,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!();
-                    }
-                };
-            }
-            0x17 => {
-                return Inst::AUIPC;
-            }
-            0x23 => {
-                return match func3 {
-                    0 => Inst::SB,
-                    1 => Inst::SH,
-                    2 => Inst::SW,
-                    _ => panic!(),
-                }
-            }
-            0x33 => {
-                return match func3 {
-                    0 => match func7 {
-                        0x00 => Inst::ADD,
-                        0x01 => Inst::MUL,
-                        0x20 => Inst::SUB,
-                        _ => panic!(),
-                    },
-                    1 => match func7 {
-                        0x00 => Inst::SLL,
-                        0x01 => Inst::MULH,
-                        _ => panic!(),
-                    },
-                    2 => match func7 {
-                        0x00 => Inst::SLT,
-                        0x01 => Inst::MULHSU,
-                        _ => panic!(),
-                    },
-                    3 => match func7 {
-                        0x00 => Inst::SLTU,
-                        0x01 => Inst::MULHU,
-                        _ => panic!(),
-                    },
-                    4 => match func7 {
-                        0x00 => Inst::XOR,
-                        0x01 => Inst::DIV,
-                        _ => panic!(),
-                    },
-                    5 => match func7 {
-                        0x00 => Inst::SRL,
-                        0x01 => Inst::DIVU,
-                        0x20 => Inst::SRA,
-                        _ => panic!(),
-                    },
-                    6 => match func7 {
-                        0x00 => Inst::OR,
-                        0x01 => Inst::REM,
-                        _ => panic!(),
-                    },
-                    7 => match func7 {
-                        0x00 => Inst::AND,
-                        0x01 => Inst::REMU,
-                        _ => panic!(),
-                    },
-                    _ => panic!(),
-                }
-            }
-            0x37 => {
-                return Inst::LUI;
-            }
-            0x63 => {
-                return match func3 {
-                    0 => Inst::BEQ,
-                    1 => Inst::BNE,
-                    4 => Inst::BLT,
-                    5 => Inst::BGE,
-                    6 => Inst::BLTU,
-                    7 => Inst::BGEU,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!();
-                    }
-                }
-            }
-            0x67 => {
-                return Inst::JALR;
-            }
-            0x6F => {
-                return Inst::JAL;
-            }
-            0x73 => {
-                return match func3 {
-                    0 => {
-                        if word == 0x30200073 {
-                            return Inst::MRET;
-                        } else {
-                            panic!();
-                        }
-                    }
-                    1 => Inst::CSRRW,
-                    2 => Inst::CSRRS,
-                    5 => Inst::CSRRWI,
-                    _ => {
-                        trace::execpt_handle(self.pc, word);
-                        panic!()
-                    }
-                };
-            }
-            _ => {
-                trace::execpt_handle(self.pc, word);
-                panic!()
             }
         }
     }
@@ -498,25 +196,40 @@ impl Core {
                     }
                     Inst::SLLI => {
                         if rd > 0 {
-                            let shamt = (imm & 0x1F) as u32;
+                            let shamt = (imm
+                                & match self.xlen {
+                                    XLen::X32 => 0x1F,
+                                    XLen::X64 => 0x3F,
+                                }) as u32;
                             self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] << shamt;
                         }
                     }
                     Inst::SLTI => {
                         if rd > 0 {
-                            if self.regfile.x[rs1 as usize] < imm {
-                                self.regfile.x[rd as usize] = 1 as i32;
-                            } else {
-                                self.regfile.x[rd as usize] = 0 as i32;
+                            match self.xlen {
+                                XLen::X32 => {
+                                    if (self.regfile.x[rs1 as usize] as i32) < (imm as i32) {
+                                        self.regfile.x[rd as usize] = 1 as i64;
+                                    } else {
+                                        self.regfile.x[rd as usize] = 0 as i64;
+                                    }
+                                }
+                                XLen::X64 => {
+                                    if self.regfile.x[rs1 as usize] < imm {
+                                        self.regfile.x[rd as usize] = 1 as i64;
+                                    } else {
+                                        self.regfile.x[rd as usize] = 0 as i64;
+                                    }
+                                }
                             }
                         }
                     }
                     Inst::SLTIU => {
                         if rd > 0 {
-                            if (self.regfile.x[rs1 as usize] as u32) < (imm as u32) {
-                                self.regfile.x[rd as usize] = 1 as i32;
+                            if (self.regfile.x[rs1 as usize] as u64) < (imm as u64) {
+                                self.regfile.x[rd as usize] = 1 as i64;
                             } else {
-                                self.regfile.x[rd as usize] = 0 as i32;
+                                self.regfile.x[rd as usize] = 0 as i64;
                             }
                         }
                     }
@@ -537,49 +250,115 @@ impl Core {
                     }
                     Inst::SRLI => {
                         if rd > 0 {
-                            let shamt = (imm & 0x1F) as u32;
-                            self.regfile.x[rd as usize] =
-                                ((self.regfile.x[rs1 as usize] as u32) >> shamt) as i32;
+                            let shamt = (imm
+                                & match self.xlen {
+                                    XLen::X32 => 0x1F,
+                                    XLen::X64 => 0x3F,
+                                }) as u32;
+
+                            match self.xlen {
+                                XLen::X32 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as u32) >> shamt) as i64;
+                                }
+                                XLen::X64 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as u64) >> shamt) as i64;
+                                }
+                            }
                         }
                     }
                     Inst::SRAI => {
                         if rd > 0 {
-                            let shamt = (imm & 0x1F) as u32;
-                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize] >> shamt;
+                            let shamt = (imm
+                                & match self.xlen {
+                                    XLen::X32 => 0x1F,
+                                    XLen::X64 => 0x3F,
+                                }) as u32;
+
+                            match self.xlen {
+                                XLen::X32 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as i32) >> shamt) as i64;
+                                }
+                                XLen::X64 => {
+                                    self.regfile.x[rd as usize] =
+                                        self.regfile.x[rs1 as usize] >> shamt;
+                                }
+                            }
+                        }
+                    }
+                    Inst::ADDIW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize].wrapping_add(imm)) as i32 as i64;
+                        }
+                    }
+                    Inst::SLLIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                self.regfile.x[rs1 as usize].wrapping_shl(shamt) as i32 as i64;
+                        }
+                    }
+                    Inst::SRLIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as u64 as u32).wrapping_shr(shamt)
+                                    as i32 as i64;
+                        }
+                    }
+                    Inst::SRAIW => {
+                        if rd > 0 {
+                            let shamt = (imm & 0x3F) as u32;
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as i32).wrapping_shr(shamt) as i32
+                                    as i64;
                         }
                     }
                     Inst::JALR => {
                         let tmp_pc = self.pc; // important!!!, if rs1 == rd
-                        self.pc = (self.regfile.x[rs1 as usize] as u32).wrapping_add(imm as u32);
+                        self.pc = (self.regfile.x[rs1 as usize] as u64).wrapping_add(imm as u64);
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = tmp_pc as i32;
+                            self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
                     }
                     Inst::LB => {
                         self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
-                            as i8 as i32; // NOTE: convert to i8 is important!!! different from 'LBU'
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i8 as i64; // NOTE: convert to i8 is important!!! different from 'LBU'
                                           // println!("val: {}", self.regfile.x[rd as usize]);
                     }
                     Inst::LH => {
                         self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
-                            as i16 as i32;
+                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i16 as i64;
                     }
                     Inst::LW => {
                         self.regfile.x[rd as usize] = self
-                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
-                            as i32;
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i32 as i64;
+                    }
+                    Inst::LD => {
+                        self.regfile.x[rd as usize] = self
+                            .load_doubleword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i64;
                     }
                     Inst::LBU => {
                         self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
-                            as i32;
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i64;
                     }
                     Inst::LHU => {
                         self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u32)
-                            as i32;
+                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as i64;
+                    }
+                    Inst::LWU => {
+                        self.regfile.x[rd as usize] = self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
+                            as u32 as i64;
                     }
                     Inst::FENCE => {
                         // no impl
@@ -624,43 +403,77 @@ impl Core {
                     }
                     Inst::MULH => {
                         if rd > 0 {
-                            let tmp = (self.regfile.x[rs1 as usize] as i64)
-                                * (self.regfile.x[rs2 as usize] as i64);
-                            self.regfile.x[rd as usize] = (tmp >> 32) as i32; // HACK: modify for 64bit
+                            let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                * (self.regfile.x[rs2 as usize] as i128);
+                            self.regfile.x[rd as usize] = match self.xlen {
+                                XLen::X32 => (tmp >> 32) as i64,
+                                XLen::X64 => (tmp >> 64) as i64,
+                            };
                         }
                     }
                     Inst::SLT => {
                         if rd > 0 {
-                            if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
-                                self.regfile.x[rd as usize] = 1;
-                            } else {
-                                self.regfile.x[rd as usize] = 0;
+                            match self.xlen {
+                                XLen::X32 => {
+                                    if (self.regfile.x[rs1 as usize] as i32)
+                                        < (self.regfile.x[rs2 as usize] as i32)
+                                    {
+                                        self.regfile.x[rd as usize] = 1;
+                                    } else {
+                                        self.regfile.x[rd as usize] = 0;
+                                    }
+                                }
+                                XLen::X64 => {
+                                    if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
+                                        self.regfile.x[rd as usize] = 1;
+                                    } else {
+                                        self.regfile.x[rd as usize] = 0;
+                                    }
+                                }
                             }
                         }
                     }
                     Inst::MULHSU => {
                         if rd > 0 {
-                            let tmp = (self.regfile.x[rs1 as usize] as i64)
-                                * (self.regfile.x[rs2 as usize] as u32 as i64);
-                            self.regfile.x[rd as usize] = (tmp >> 32) as i32;
+                            self.regfile.x[rd as usize] = match self.xlen {
+                                XLen::X32 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                        * (self.regfile.x[rs2 as usize] as u32 as i128);
+                                    (tmp >> 32) as i64
+                                }
+                                XLen::X64 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                        * (self.regfile.x[rs2 as usize] as u64 as i128);
+                                    (tmp >> 64) as i64
+                                }
+                            };
                         }
                     }
                     Inst::SLTU => {
                         if rd > 0 {
-                            if (self.regfile.x[rs1 as usize] as u32)
-                                < (self.regfile.x[rs2 as usize] as u32)
+                            if (self.regfile.x[rs1 as usize] as u64)
+                                < (self.regfile.x[rs2 as usize] as u64)
                             {
-                                self.regfile.x[rd as usize] = 1;
+                                self.regfile.x[rd as usize] = 1i64;
                             } else {
-                                self.regfile.x[rd as usize] = 0;
+                                self.regfile.x[rd as usize] = 0i64;
                             }
                         }
                     }
                     Inst::MULHU => {
                         if rd > 0 {
-                            let tmp = (self.regfile.x[rs1 as usize] as u32 as u64)
-                                * (self.regfile.x[rs2 as usize] as u32 as u64);
-                            self.regfile.x[rd as usize] = (tmp >> 32) as i32;
+                            self.regfile.x[rd as usize] = match self.xlen {
+                                XLen::X32 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as u32 as u64)
+                                        * (self.regfile.x[rs2 as usize] as u32 as u64);
+                                    (tmp >> 32) as i32 as i64
+                                }
+                                XLen::X64 => {
+                                    let tmp = (self.regfile.x[rs1 as usize] as u64 as u128)
+                                        * (self.regfile.x[rs2 as usize] as u64 as u128);
+                                    (tmp >> 64) as i64
+                                }
+                            };
                         }
                     }
                     Inst::XOR => {
@@ -672,7 +485,7 @@ impl Core {
                     Inst::DIV => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
-                                0 => -1i32,
+                                0 => -1i64,
                                 _ => self.regfile.x[rs1 as usize]
                                     .wrapping_div(self.regfile.x[rs2 as usize]),
                             }
@@ -680,25 +493,53 @@ impl Core {
                     }
                     Inst::SRL => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = ((self.regfile.x[rs1 as usize] as u32)
-                                .wrapping_shr(self.regfile.x[rs2 as usize] as u32))
-                                as i32;
+                            match self.xlen {
+                                XLen::X32 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as u32).wrapping_shr(
+                                            (self.regfile.x[rs2 as usize] & 0x1Fi64) as u32,
+                                        )) as i64;
+                                }
+                                XLen::X64 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as u64).wrapping_shr(
+                                            (self.regfile.x[rs2 as usize] & 0x3Fi64) as u32,
+                                        )) as i64;
+                                }
+                            }
                         }
                     }
                     Inst::DIVU => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
-                                0 => -1i32,
-                                _ => (self.regfile.x[rs1 as usize] as u32)
-                                    .wrapping_div(self.regfile.x[rs2 as usize] as u32)
-                                    as i32,
+                                0 => -1i64,
+                                _ => match self.xlen {
+                                    XLen::X32 => (self.regfile.x[rs1 as usize] as u32)
+                                        .wrapping_div(self.regfile.x[rs2 as usize] as u32)
+                                        as i64,
+                                    XLen::X64 => (self.regfile.x[rs1 as usize] as u64)
+                                        .wrapping_div(self.regfile.x[rs2 as usize] as u64)
+                                        as i64,
+                                },
                             }
                         }
                     }
                     Inst::SRA => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
-                                .wrapping_shr(self.regfile.x[rs2 as usize] as u32);
+                            match self.xlen {
+                                XLen::X32 => {
+                                    self.regfile.x[rd as usize] =
+                                        ((self.regfile.x[rs1 as usize] as i32).wrapping_shr(
+                                            (self.regfile.x[rs2 as usize] & 0x1Fi64) as u32,
+                                        )) as i64;
+                                }
+                                XLen::X64 => {
+                                    self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                        .wrapping_shr(
+                                            (self.regfile.x[rs2 as usize] & 0x3Fi64) as u32,
+                                        );
+                                }
+                            }
                         }
                     }
                     Inst::OR => {
@@ -727,10 +568,97 @@ impl Core {
                             self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
                                 0 => self.regfile.x[rs1 as usize],
                                 _ => {
-                                    ((self.regfile.x[rs1 as usize] as u32)
-                                        .wrapping_rem(self.regfile.x[rs2 as usize] as u32))
-                                        as i32
+                                    ((self.regfile.x[rs1 as usize] as u64)
+                                        .wrapping_rem(self.regfile.x[rs2 as usize] as u64))
+                                        as i64
                                 }
+                            }
+                        }
+                    }
+                    Inst::ADDW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_add(self.regfile.x[rs2 as usize])
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::MULW => {
+                        if rd > 0 {
+                            let tmp = (self.regfile.x[rs1 as usize] as i128)
+                                * (self.regfile.x[rs2 as usize] as i128);
+                            self.regfile.x[rd as usize] = tmp as i32 as i64;
+                        }
+                    }
+                    Inst::SUBW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = self.regfile.x[rs1 as usize]
+                                .wrapping_sub(self.regfile.x[rs2 as usize])
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::SLLW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = (self.regfile.x[rs1 as usize] as u64)
+                                .wrapping_shl((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::DIVW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i64,
+                                _ => (self.regfile.x[rs1 as usize] as i32)
+                                    .wrapping_div(self.regfile.x[rs2 as usize] as i32)
+                                    as i64,
+                            }
+                        }
+                    }
+                    Inst::SRLW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] =
+                                (self.regfile.x[rs1 as usize] as u64 as u32)
+                                    .wrapping_shr((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                    as i32 as i64;
+                        }
+                    }
+                    Inst::DIVUW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => -1i64,
+                                _ => (self.regfile.x[rs1 as usize] as u32)
+                                    .wrapping_div(self.regfile.x[rs2 as usize] as u32)
+                                    as i32 as i64,
+                            }
+                        }
+                    }
+                    Inst::SRAW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = (self.regfile.x[rs1 as usize] as i32)
+                                .wrapping_shr((self.regfile.x[rs2 as usize] & 0x1Fi64) as u32)
+                                as i32
+                                as i64;
+                        }
+                    }
+                    Inst::REMW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => (self.regfile.x[rs1 as usize] as i32)
+                                    .wrapping_rem(self.regfile.x[rs2 as usize] as i32)
+                                    as i64,
+                            }
+                        }
+                    }
+                    Inst::REMUW => {
+                        if rd > 0 {
+                            self.regfile.x[rd as usize] = match self.regfile.x[rs2 as usize] {
+                                0 => self.regfile.x[rs1 as usize],
+                                _ => (self.regfile.x[rs1 as usize] as u32)
+                                    .wrapping_rem(self.regfile.x[rs2 as usize] as u32)
+                                    as i32 as i64,
                             }
                         }
                     }
@@ -747,20 +675,26 @@ impl Core {
                 match inst {
                     Inst::SB => {
                         self.store_byte(
-                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             (self.regfile.x[rs2 as usize] as u8) & 0xFFu8,
                         );
                     }
                     Inst::SH => {
                         self.store_halfword(
-                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
-                            (self.regfile.x[rs2 as usize] as u16) & 0xFFFFu16,
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
+                            (self.regfile.x[rs2 as usize] as u64 as u16) & 0xFFFFu16,
                         );
                     }
                     Inst::SW => {
                         self.store_word(
-                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u32,
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u32,
+                        );
+                    }
+                    Inst::SD => {
+                        self.store_doubleword(
+                            self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
+                            self.regfile.x[rs2 as usize] as u64,
                         );
                     }
                     _ => panic!(),
@@ -772,9 +706,9 @@ impl Core {
                 match inst {
                     Inst::JAL => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.pc as i32; // HACK:  x0 is all zero!
+                            self.regfile.x[rd as usize] = self.pc as i64;
                         }
-                        self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
                     }
                     _ => {
                         println!(
@@ -795,38 +729,57 @@ impl Core {
                 match inst {
                     Inst::BEQ => {
                         if self.regfile.x[rs1 as usize] == self.regfile.x[rs2 as usize] {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
                         }
                     }
-                    Inst::BNE => {
-                        if self.regfile.x[rs1 as usize] != self.regfile.x[rs2 as usize] {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                    Inst::BNE => match self.xlen {
+                        XLen::X32 => {
+                            if (self.regfile.x[rs1 as usize] as i32)
+                                != (self.regfile.x[rs2 as usize] as i32)
+                            {
+                                self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                            }
                         }
-                    }
+                        XLen::X64 => {
+                            if self.regfile.x[rs1 as usize] != self.regfile.x[rs2 as usize] {
+                                self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                            }
+                        }
+                    },
                     Inst::BLT => {
-                        // println!("rs1: {}, rs2: {}", rs1, rs2);
                         // trace::execpt_handle(self.pc, word);
-                        if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                        match self.xlen {
+                            XLen::X32 => {
+                                if (self.regfile.x[rs1 as usize] as i32)
+                                    < (self.regfile.x[rs2 as usize] as i32)
+                                {
+                                    self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                                }
+                            }
+                            XLen::X64 => {
+                                if self.regfile.x[rs1 as usize] < self.regfile.x[rs2 as usize] {
+                                    self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                                }
+                            }
                         }
                     }
                     Inst::BGE => {
                         if self.regfile.x[rs1 as usize] >= self.regfile.x[rs2 as usize] {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
                         }
                     }
                     Inst::BLTU => {
-                        if (self.regfile.x[rs1 as usize] as u32)
-                            < (self.regfile.x[rs2 as usize] as u32)
+                        if (self.regfile.x[rs1 as usize] as u64)
+                            < (self.regfile.x[rs2 as usize] as u64)
                         {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
                         }
                     }
                     Inst::BGEU => {
-                        if (self.regfile.x[rs1 as usize] as u32)
-                            >= (self.regfile.x[rs2 as usize] as u32)
+                        if (self.regfile.x[rs1 as usize] as u64)
+                            >= (self.regfile.x[rs2 as usize] as u64)
                         {
-                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u32);
+                            self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
                         }
                     }
                     _ => {
@@ -836,17 +789,17 @@ impl Core {
             }
             InstType::U => {
                 let rd = inst_wrap.val(11, 7);
-                let imm = Core::imm_ext_gen(InstType::U, word) as u32;
+                let imm = Core::imm_ext_gen(InstType::U, word) as u64;
                 match inst {
                     Inst::AUIPC => {
                         if rd > 0 {
                             self.regfile.x[rd as usize] =
-                                self.pc.wrapping_sub(4).wrapping_add(imm) as i32;
+                                self.pc.wrapping_sub(4).wrapping_add(imm) as i64;
                         }
                     }
                     Inst::LUI => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = imm as i32;
+                            self.regfile.x[rd as usize] = imm as i64;
                         }
                     }
                     _ => {
@@ -863,22 +816,22 @@ impl Core {
                 match inst {
                     Inst::CSRRW => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
                         }
-                        self.csr[csr as usize] = self.regfile.x[rs1 as usize] as u32;
+                        self.csr[csr as usize] = self.regfile.x[rs1 as usize] as u64;
                     }
                     Inst::CSRRS => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
                         }
                         self.csr[csr as usize] =
-                            self.csr[csr as usize] | self.regfile.x[rs1 as usize] as u32;
+                            self.csr[csr as usize] | self.regfile.x[rs1 as usize] as u64;
                     }
                     Inst::CSRRWI => {
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i32;
+                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
                         }
-                        self.csr[csr as usize] = rs1;
+                        self.csr[csr as usize] = rs1 as u64;
                     }
                     _ => {
                         panic!();

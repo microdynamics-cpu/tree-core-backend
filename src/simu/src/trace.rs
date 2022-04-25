@@ -1,11 +1,27 @@
-pub fn execpt_handle(pc: u32, word: u32) {
+use crate::inst::{get_inst_name, Inst};
+use crate::regfile::Regfile;
+
+pub fn execpt_handle(pc: u64, word: u32) {
     println!(
-        "[UNKNOWN] PC:{:08x}, Word:{:08x}",
+        "[UNKNOWN] PC:{:016x}, Word:{:08x}",
         pc.wrapping_sub(4),
         word
     );
     panic!();
 }
 
-pub fn regfile_trace() {}
+pub fn inst_trace(pc: u64, word: u32, inst: &Inst) {
+    println!(
+        "PC:{:016x}, Word:{:08x}, Inst:{}",
+        pc.wrapping_sub(4),
+        word,
+        get_inst_name(&inst)
+    );
+}
+
+pub fn regfile_trace(regfile: &Regfile, val: &str) {
+    if val != "0" {
+        println!("{}: {:016x}", val, regfile.val(val));
+    }
+}
 pub fn csr_trace() {}
