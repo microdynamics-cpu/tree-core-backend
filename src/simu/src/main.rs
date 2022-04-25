@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
@@ -35,13 +34,20 @@ struct Args {
     /// Bit width of the processor
     #[clap(short, long)]
     xlen: String,
+
+    /// Interactive mode
+    #[clap(short, long)]
+    inter: bool,
 }
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    // println!("path: {}", args.bin);
-    // println!("xlen: {}", args.xlen);
-    // println!("debug: {}", args.debug);
+    
+    if args.inter {
+        interactive_mode();
+        return Ok(());
+    }
+
     let mut file = File::open(args.bin)?;
     let mut contents = vec![];
     file.read_to_end(&mut contents)?;
