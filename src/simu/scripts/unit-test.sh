@@ -21,28 +21,28 @@ unitTest() {
     for file in $RV32UI_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
-        $PROGRAM $file "-x32"
+        $PROGRAM --bin $file --xlen x32
     done
 
     printf "$INFO===RV32UM TESTS===$END\n"
     for file in $RV32UM_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
-        $PROGRAM $file "-x32"
+        $PROGRAM --bin $file --xlen x32
     done
 
     printf "$INFO===RV64UI TESTS===$END\n"
     for file in $RV64UI_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
-        $PROGRAM $file "-x64"
+        $PROGRAM --bin $file --xlen x64
     done
 
     printf "$INFO===RV64UM TESTS===$END\n"
     for file in $RV64UM_P_TEST_BIN; do
         val=`eval "basename $file"`
         printf "$INFO[%16s] $END" $val
-        $PROGRAM $file "-x64"
+        $PROGRAM --bin $file --xlen x64
     done
 }
 
