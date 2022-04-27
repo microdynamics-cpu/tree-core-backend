@@ -43,7 +43,10 @@ pub enum Inst {
     CSRRW,
     CSRRS,
     CSRRWI,
+    URET,
+    SRET,
     MRET,
+    SFENCEVMA,
     
     // RV32M
     MUL,
@@ -131,7 +134,10 @@ pub fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::CSRRS => "CSRRS",
         Inst::CSRRW => "CSRRW",
         Inst::CSRRWI => "CSRRWI",
+        Inst::URET => "URET",
+        Inst::SRET => "SRET",
         Inst::MRET => "MRET",
+        Inst::SFENCEVMA => "SFENCE_VMA",
         Inst::FENCE => "FENCE",
         Inst::ECALL => "ECALL",
         Inst::EBREAK => "EBREAK",
@@ -175,7 +181,10 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::SRA
         | Inst::OR
         | Inst::AND
+        | Inst::URET
+        | Inst::SRET
         | Inst::MRET
+        | Inst::SFENCEVMA
         | Inst::MUL
         | Inst::MULH
         | Inst::MULHSU

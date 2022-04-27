@@ -1,10 +1,10 @@
 use crate::data::Word;
 use crate::decode::Decode;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
+use crate::mmu::AddrMode;
+use crate::privilege::PrivMode;
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
-use crate::privilege::PrivMode;
-use crate::mmu::AddrMode;
 
 const START_ADDR: u64 = 0x1000u64;
 const MEM_CAPACITY: usize = 1024 * 512;
@@ -677,6 +677,9 @@ impl Core {
                             }
                         }
                     }
+                    Inst::URET => {}
+                    Inst::SRET => {}
+                    Inst::SFENCEVMA => {}
                     Inst::MRET => {}
                     _ => {
                         panic!()

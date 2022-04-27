@@ -171,10 +171,11 @@ impl Decode {
                         0 => match rs2 {
                             0x00 => Inst::ECALL,
                             0x01 => Inst::EBREAK,
-                            // 0x02 => URET,
+                            0x02 => Inst::URET,
                             _ => panic!(),
                         },
-                        // 0x08 => Inst::SRET,
+                        0x08 => Inst::SRET,
+                        0x09 => Inst::SFENCEVMA,
                         0x18 => Inst::MRET,
                         _ => {
                             println!(
