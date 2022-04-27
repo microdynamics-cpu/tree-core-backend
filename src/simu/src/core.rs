@@ -1,8 +1,10 @@
+use crate::csr;
 use crate::data::Word;
 use crate::decode::Decode;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
 use crate::mmu::AddrMode;
-use crate::privilege::PrivMode;
+use crate::mmu::MAType;
+use crate::privilege::{get_exception_cause, get_priv_encoding, Exception, PrivMode};
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
 
@@ -53,9 +55,9 @@ impl Core {
         self.pc = START_ADDR;
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
-            let end = match self.load_word(self.pc) {
-                0x0000_0073 => true,
-                _ => false,
+            let end = match self.load_word(self.pc, true) {
+                Ok(w) => w == 0x0000_0073u32,
+                Err(e) => panic!(),
             };
 
             if end {
@@ -72,65 +74,190 @@ impl Core {
     }
 
     fn tick(&mut self) {
-        let word = self.fetch();
-        let inst = Decode::decode(self.pc, word);
-        if self.debug {
-            inst_trace(self.pc, word, &inst);
-        }
-        self.exec(word, inst);
+        match self.tick_wrap() {
+            Ok(()) => {}
+            Err(e) => self.handle_trap(e),
+        };
         // regfile_trace(&self.regfile, "ra");
         // regfile_trace(&self.regfile, "sp");
         // regfile_trace(&self.regfile, "a4");
         // regfile_trace(&self.regfile, "t2");
     }
 
-    fn fetch(&mut self) -> u32 {
-        let word = self.load_word(self.pc);
-        self.pc = self.pc.wrapping_add(4);
-        word
+    fn tick_wrap(&mut self) -> Result<(), Exception> {
+        let word = match self.fetch() {
+            Ok(w) => w,
+            Err(e) => return Err(e),
+        };
+        let inst = Decode::decode(self.pc, word);
+        if self.debug {
+            inst_trace(self.pc, word, &inst);
+        }
+        self.exec(word, inst);
+        Ok(())
     }
 
-    fn load_byte(&self, addr: u64) -> u8 {
-        self.mem[match self.xlen {
+    fn handle_trap(&mut self, excpt: Exception) {
+        let cur_priv_encode = get_priv_encoding(&self.priv_mode) as u64;
+        self.priv_mode =
+            match (self.csr[csr::CSR_MEDELEG_ADDR as usize] >> get_exception_cause(&excpt)) & 1 {
+                1u64 => PrivMode::Supervisor,
+                0u64 => PrivMode::Machine,
+                _ => panic!(),
+            };
+        match self.priv_mode {
+            PrivMode::Supervisor => {
+                self.csr[csr::CSR_SCAUSE_ADDR as usize] = get_exception_cause(&excpt);
+                self.csr[csr::CSR_STVAL_ADDR as usize] = self.pc;
+                self.pc = self.csr[csr::CSR_STVEC_ADDR as usize];
+                // override SPP bit[8] with the current privilege mode encoding
+                self.csr[csr::CSR_SSTATUS_ADDR as usize] =
+                    (self.csr[csr::CSR_SSTATUS_ADDR as usize] & !0x100)
+                        | ((cur_priv_encode & 1) << 8);
+            }
+            PrivMode::Machine => {
+                self.csr[csr::CSR_MCAUSE_ADDR as usize] = get_exception_cause(&excpt);
+                self.csr[csr::CSR_MTVAL_ADDR as usize] = self.pc;
+                self.pc = self.csr[csr::CSR_MTVEC_ADDR as usize];
+                // override MPP bits[12:11] with the current privilege mode encoding
+                self.csr[csr::CSR_MSTATUS_ADDR as usize] =
+                    (self.csr[csr::CSR_MSTATUS_ADDR as usize] & !0x1800)
+                        | ((cur_priv_encode & 1) << 11);
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn fetch(&mut self) -> Result<u32, Exception> {
+        let word = match self.load_word(self.pc, true) {
+            Ok(w) => w,
+            Err(e) => {
+                self.pc = self.pc.wrapping_add(4);
+                return Err(Exception::InstPageFault);
+            }
+        };
+        self.pc = self.pc.wrapping_add(4);
+        Ok(word)
+    }
+
+    fn load_byte(&self, addr: u64, trans: bool) -> Result<u8, Exception> {
+        let phy_addr = match trans {
+            true => addr, // HACK: fake
+            false => addr,
+        };
+        // HACK: bound check!!
+        Ok(self.mem[match self.xlen {
             XLen::X32 => addr & 0xFFFF_FFFF,
             XLen::X64 => addr,
-        } as usize]
+        } as usize])
     }
 
-    fn load_halfword(&self, addr: u64) -> u16 {
-        ((self.load_byte(addr.wrapping_add(1)) as u16) << 8) | (self.load_byte(addr) as u16)
+    fn load_halfword(&self, addr: u64, trans: bool) -> Result<u16, Exception> {
+        let mut res = 0u16;
+        for i in 0..2 {
+            match self.load_byte(addr.wrapping_add(i), trans) {
+                Ok(v) => res |= (v as u16) << (8 * i),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn load_word(&self, addr: u64) -> u32 {
-        ((self.load_halfword(addr.wrapping_add(2)) as u32) << 16)
-            | (self.load_halfword(addr) as u32)
+    fn load_word(&self, addr: u64, trans: bool) -> Result<u32, Exception> {
+        let mut res = 0u32;
+        for i in 0..2 {
+            match self.load_halfword(addr.wrapping_add(i * 2), trans) {
+                Ok(v) => res |= (v as u32) << (8 * i * 2),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn load_doubleword(&self, addr: u64) -> u64 {
-        ((self.load_word(addr.wrapping_add(4)) as u64) << 32) | (self.load_word(addr) as u64)
+    fn load_doubleword(&self, addr: u64, trans: bool) -> Result<u64, Exception> {
+        let mut res = 0u64;
+        for i in 0..2 {
+            match self.load_word(addr.wrapping_add(i * 4), trans) {
+                Ok(v) => res |= (v as u64) << (8 * i * 4),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn store_byte(&mut self, addr: u64, val: u8) {
+    fn store_byte(&mut self, addr: u64, val: u8, trans: bool) -> Result<(), Exception> {
+        let phy_addr = match trans {
+            true => addr, // HACK: fake
+            false => addr,
+        };
+
         self.mem[match self.xlen {
             XLen::X32 => addr & 0xFFFF_FFFF,
             XLen::X64 => addr,
         } as usize] = val;
+        Ok(())
     }
 
-    fn store_halfword(&mut self, addr: u64, val: u16) {
-        self.store_byte(addr, (val & 0xFFu16) as u8);
-        self.store_byte(addr.wrapping_add(1), ((val >> 8) & 0xFFu16) as u8);
+    fn store_halfword(&mut self, addr: u64, val: u16, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_byte(
+                addr.wrapping_add(i),
+                (val >> (8 * i) & 0xFFu16) as u8,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
     }
 
-    fn store_word(&mut self, addr: u64, val: u32) {
-        self.store_halfword(addr, (val & 0xFFFFu32) as u16);
-        self.store_halfword(addr.wrapping_add(2), ((val >> 16) & 0xFFFFu32) as u16);
+    fn store_word(&mut self, addr: u64, val: u32, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_halfword(
+                addr.wrapping_add(i * 2),
+                (val >> (8 * i * 2) & 0xFFFFu32) as u16,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
     }
 
-    fn store_doubleword(&mut self, addr: u64, val: u64) {
-        self.store_word(addr, (val & 0xFFFF_FFFFFu64) as u32);
-        self.store_word(addr.wrapping_add(4), ((val >> 32) & 0xFFFF_FFFFu64) as u32);
+    fn store_doubleword(&mut self, addr: u64, val: u64, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_word(
+                addr.wrapping_add(i * 4),
+                (val >> (8 * i * 4) & 0xFFFF_FFFFFu64) as u32,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
     }
+
+    fn trans_addr(&mut self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
+        match self.addr_mode {
+            AddrMode::None => Ok(addr),
+            AddrMode::SV32 => match self.priv_mode {
+                PrivMode::User | PrivMode::Supervisor => {
+                    let vpns = [(addr >> 12) & 0x3FF, (addr >> 22) & 0x3FF];
+                    // self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
+                    Ok(addr)
+                }
+                _ => Ok(addr),
+            },
+            _ => panic!(),
+        }
+    }
+
+    // fn trav_page(&self, ) -> Result<u64, ()> {
+
+    // }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i64 {
         let inst = Word::new(word);
@@ -185,7 +312,7 @@ impl Core {
         }
     }
 
-    fn exec(&mut self, word: u32, inst: Inst) {
+    fn exec(&mut self, word: u32, inst: Inst) -> Result<(), Exception> {
         let inst_type = get_instruction_type(&inst);
         let inst_wrap = Word::new(word);
         match inst_type {
@@ -334,40 +461,65 @@ impl Core {
                         }
                     }
                     Inst::LB => {
-                        self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i8 as i64; // NOTE: convert to i8 is important!!! different from 'LBU'
-                                          // println!("val: {}", self.regfile.x[rd as usize]);
+                        self.regfile.x[rd as usize] = match self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i8 as i64,
+                            Err(e) => return Err(e),
+                        };
+                        // NOTE: convert to i8 is important!!! different from 'LBU'
+                        // println!("val: {}", self.regfile.x[rd as usize]);
                     }
                     Inst::LH => {
-                        self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i16 as i64;
+                        self.regfile.x[rd as usize] = match self.load_halfword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i16 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LW => {
-                        self.regfile.x[rd as usize] = self
-                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i32 as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i32 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LD => {
-                        self.regfile.x[rd as usize] = self
-                            .load_doubleword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self.load_doubleword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LBU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LHU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self.load_halfword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LWU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as u32 as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as u32 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::FENCE => {
                         // HACK: no impl
@@ -692,28 +844,44 @@ impl Core {
                 let offset = Core::imm_ext_gen(InstType::S, word);
                 match inst {
                     Inst::SB => {
-                        self.store_byte(
+                        match self.store_byte(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             (self.regfile.x[rs2 as usize] as u8) & 0xFFu8,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SH => {
-                        self.store_halfword(
+                        match self.store_halfword(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             (self.regfile.x[rs2 as usize] as u64 as u16) & 0xFFFFu16,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SW => {
-                        self.store_word(
+                        match self.store_word(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u32,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SD => {
-                        self.store_doubleword(
+                        match self.store_doubleword(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u64,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     _ => panic!(),
                 }
@@ -857,5 +1025,6 @@ impl Core {
                 }
             }
         }
+        Ok(())
     }
 }
