@@ -60,7 +60,7 @@ impl Decode {
                         0x00 => Inst::SRLIW,
                         0x20 => Inst::SRAIW,
                         _ => panic!(),
-                    }
+                    },
                     _ => panic!(),
                 }
             }
@@ -125,22 +125,20 @@ impl Decode {
             }
             0x3B => {
                 return match func3 {
-                    0 => {
-                        match func7 {
-                            0x00 => Inst::ADDW,
-                            0x01 => Inst::MULW,
-                            0x20 => Inst::SUBW,
-                            _ => panic!(),
-                        }
-                    }
+                    0 => match func7 {
+                        0x00 => Inst::ADDW,
+                        0x01 => Inst::MULW,
+                        0x20 => Inst::SUBW,
+                        _ => panic!(),
+                    },
                     1 => return Inst::SLLW,
                     4 => return Inst::DIVW,
                     5 => match func7 {
-                            0x00 => Inst::SRLW,
-                            0x01 => Inst::DIVUW,
-                            0x20 => Inst::SRAW,
-                            _ => panic!(),
-                        }
+                        0x00 => Inst::SRLW,
+                        0x01 => Inst::DIVUW,
+                        0x20 => Inst::SRAW,
+                        _ => panic!(),
+                    },
                     6 => return Inst::REMW,
                     7 => return Inst::REMUW,
                     _ => panic!(),
@@ -167,14 +165,25 @@ impl Decode {
                 return Inst::JAL;
             }
             0x73 => {
+                let rs2 = inst.val(24, 20);
                 return match func3 {
-                    0 => {
-                        if word == 0x30200073 {
-                            return Inst::MRET;
-                        } else {
-                            panic!();
+                    0 => match func7 {
+                        0 => match rs2 {
+                            0x00 => Inst::ECALL,
+                            0x01 => Inst::EBREAK,
+                            // 0x02 => URET,
+                            _ => panic!(),
+                        },
+                        // 0x08 => Inst::SRET,
+                        0x18 => Inst::MRET,
+                        _ => {
+                            println!(
+                                "Priviledged instruction 0x{:08x} is not supported yet",
+                                word
+                            );
+                            panic!()
                         }
-                    }
+                    },
                     1 => Inst::CSRRW,
                     2 => Inst::CSRRS,
                     5 => Inst::CSRRWI,

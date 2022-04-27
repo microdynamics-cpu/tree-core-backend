@@ -3,13 +3,19 @@ use crate::decode::Decode;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
+use crate::privilege::PrivMode;
+use crate::mmu::AddrMode;
 
-const MEM_CAPACITY: usize = 1024 * 16;
+const START_ADDR: u64 = 0x1000u64;
+const MEM_CAPACITY: usize = 1024 * 512;
 const CSR_CAPACITY: usize = 4096;
 
 pub struct Core {
     regfile: Regfile,
     pc: u64,
+    ppn: u64,
+    priv_mode: PrivMode,
+    addr_mode: AddrMode,
     csr: [u64; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
     inst_num: u64,
@@ -28,6 +34,9 @@ impl Core {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
+            ppn: 0u64,
+            priv_mode: PrivMode::Machine,
+            addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
             inst_num: 0u64,
@@ -41,7 +50,7 @@ impl Core {
             self.mem[i] = data[i];
         }
 
-        self.pc = 0x1000;
+        self.pc = START_ADDR;
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc) {
@@ -361,7 +370,13 @@ impl Core {
                             as u32 as i64;
                     }
                     Inst::FENCE => {
-                        // no impl
+                        // HACK: no impl
+                    }
+                    Inst::ECALL => {
+                        // HACK: no impl
+                    }
+                    Inst::EBREAK => {
+                        // HACK: no impl
                     }
                     _ => {
                         println!(
