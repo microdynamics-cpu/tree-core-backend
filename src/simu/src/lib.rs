@@ -6,3 +6,5 @@ pub mod shell;
 pub mod inst;
 pub mod decode;
 pub mod exec;
+pub mod privilege;
+pub mod mmu;
