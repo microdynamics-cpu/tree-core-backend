@@ -1,3 +1,5 @@
+use crate::csr;
+
 pub enum PrivMode {
     User,
     Supervisor,
@@ -25,7 +27,7 @@ pub fn get_priv_mode_name(mode: &PrivMode) -> &'static str {
 }
 
 // bigger number is higher privilege level
-fn get_priv_encoding(mode: &PrivMode) -> u8 {
+pub fn get_priv_encoding(mode: &PrivMode) -> u8 {
     match mode {
         PrivMode::User => 0,
         PrivMode::Supervisor => 1,
