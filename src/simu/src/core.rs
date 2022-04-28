@@ -272,9 +272,20 @@ impl Core {
                     let vpns = [(addr >> 12) & 0x3FF, (addr >> 22) & 0x3FF];
                     self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
                 }
-                _ => Ok(addr), // HACK: not impl for sv39 and sv48
+                _ => Ok(addr),
             },
-            _ => panic!(),
+            AddrMode::SV39 => match self.priv_mode {
+                PrivMode::User | PrivMode::Supervisor => {
+                    let vpns = [
+                        (addr >> 12) & 0x1FF,
+                        (addr >> 21) & 0x1FF,
+                        (addr >> 30) & 0x1FF,
+                    ];
+                    self.trav_page(addr, 3 - 1, self.ppn, &vpns, ma_type)
+                }
+                _ => Ok(addr),
+            },
+            _ => panic!(), // HACK: not impl for sv48
         }
     }
 
@@ -287,14 +298,39 @@ impl Core {
         ma_type: MAType,
     ) -> Result<u64, ()> {
         let pagesize = 4096;
-        let ptesize = 4;
+        let ptesize = match self.addr_mode {
+            AddrMode::SV32 => 4,
+            _ => 8, // sv39 and sv48
+        };
+
         let pte_addr = parent_ppn * pagesize + vpns[level as usize] * ptesize;
-        let pte = match self.load_word(pte_addr, false) {
-            Ok(v) => v,
-            Err(_e) => panic!(),
-        } as u64;
-        let ppn = (pte >> 10) & 0x3FFFFF;
-        let ppns = [(pte >> 10) & 0x3FF, (pte >> 20) & 0xFFF];
+        let pte = match self.addr_mode {
+            AddrMode::SV32 => match self.load_word(pte_addr, false) {
+                Ok(v) => v as u64,
+                Err(_e) => panic!(),
+            },
+            _ => match self.load_doubleword(pte_addr, false) {
+                Ok(v) => v as u64,
+                Err(_e) => panic!(),
+            },
+        };
+
+        let ppn = match self.addr_mode {
+            AddrMode::SV32 => (pte >> 10) & 0x3FFFFF,
+            AddrMode::SV39 => (pte >> 10) & 0xFFF_FFFF_FFFF,
+            _ => panic!(),
+        };
+
+        let ppns = match self.addr_mode {
+            AddrMode::SV32 => [(pte >> 10) & 0x3FF, (pte >> 20) & 0xFFF, 0],
+            AddrMode::SV39 => [
+                (pte >> 10) & 0x1FF,
+                (pte >> 19) & 0x1FF,
+                (pte >> 28) & 0x3FF_FFFF,
+            ],
+            _ => panic!(),
+        };
+
         let _rsw = (pte >> 8) & 0x3;
         let d = (pte >> 7) & 1;
         let a = (pte >> 6) & 1;
@@ -341,16 +377,33 @@ impl Core {
         };
 
         let offset = virt_addr & 0xFFF; // [11:0]
-                                        // @TODO: Here is SV32 specific. Fix me.
-        let phy_addr = match level {
-            1 => {
-                if ppns[0] != 0 {
-                    return Err(());
+        let phy_addr = match self.addr_mode {
+            AddrMode::SV32 => match level {
+                1 => {
+                    if ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[1] << 22) | (vpns[0] << 12) | offset
                 }
-                ((ppns[1]) << 22) | (vpns[0] << 12) | offset
-            }
-            0 => ((ppn) << 12) | offset,
-            _ => panic!(),
+                0 => (ppn << 12) | offset,
+                _ => panic!(), // Shouldn't happen
+            },
+            _ => match level {
+                2 => {
+                    if ppns[1] != 0 || ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[2] << 30) | (vpns[1] << 21) | (vpns[0] << 12) | offset
+                }
+                1 => {
+                    if ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[2] << 30) | (ppns[1] << 21) | (vpns[0] << 12) | offset
+                }
+                0 => (ppn << 12) | offset,
+                _ => panic!(), // Shouldn't happen
+            },
         };
         // println!("PA:{:X}", phy_addr);
         Ok(phy_addr)
