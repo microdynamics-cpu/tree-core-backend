@@ -4,7 +4,9 @@ use crate::decode::Decode;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
 use crate::mmu::AddrMode;
 use crate::mmu::MAType;
-use crate::privilege::{get_exception_cause, get_priv_encoding, Exception, PrivMode};
+use crate::privilege::{
+    get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
+};
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
 
@@ -107,7 +109,7 @@ impl Core {
         match self.priv_mode {
             PrivMode::Supervisor => {
                 self.csr[csr::CSR_SCAUSE_ADDR as usize] = get_exception_cause(&excpt);
-                self.csr[csr::CSR_STVAL_ADDR as usize] = self.pc;
+                self.csr[csr::CSR_STVAL_ADDR as usize] = excpt.addr;
                 self.pc = self.csr[csr::CSR_STVEC_ADDR as usize];
                 // override SPP bit[8] with the current privilege mode encoding
                 self.csr[csr::CSR_SSTATUS_ADDR as usize] =
@@ -116,7 +118,7 @@ impl Core {
             }
             PrivMode::Machine => {
                 self.csr[csr::CSR_MCAUSE_ADDR as usize] = get_exception_cause(&excpt);
-                self.csr[csr::CSR_MTVAL_ADDR as usize] = self.pc;
+                self.csr[csr::CSR_MTVAL_ADDR as usize] = excpt.addr;
                 self.pc = self.csr[csr::CSR_MTVEC_ADDR as usize];
                 // override MPP bits[12:11] with the current privilege mode encoding
                 self.csr[csr::CSR_MSTATUS_ADDR as usize] =
@@ -132,7 +134,10 @@ impl Core {
             Ok(w) => w,
             Err(_e) => {
                 self.pc = self.pc.wrapping_add(4);
-                return Err(Exception::InstPageFault); // NOTE: coverage the LoadPageFault
+                return Err(Exception {
+                    excpt_type: ExceptionType::InstPageFault,
+                    addr: self.pc.wrapping_sub(4),
+                }); // NOTE: coverage the LoadPageFault
             }
         };
         self.pc = self.pc.wrapping_add(4);
@@ -151,7 +156,12 @@ impl Core {
         let phy_addr = match trans {
             true => match self.trans_addr(addr, MAType::Read) {
                 Ok(v) => v,
-                Err(_e) => return Err(Exception::LoadPageFault),
+                Err(_e) => {
+                    return Err(Exception {
+                        excpt_type: ExceptionType::LoadPageFault,
+                        addr: addr,
+                    })
+                }
             },
             false => addr,
         };
@@ -207,7 +217,12 @@ impl Core {
         let phy_addr = match trans {
             true => match self.trans_addr(addr, MAType::Write) {
                 Ok(v) => v,
-                Err(_e) => return Err(Exception::StorePageFault),
+                Err(_e) => {
+                    return Err(Exception {
+                        excpt_type: ExceptionType::StorePageFault,
+                        addr: addr,
+                    })
+                }
             },
             false => addr,
         };
@@ -417,7 +432,10 @@ impl Core {
     fn read_csr(&self, addr: u16) -> Result<u64, Exception> {
         match self.get_csr_access_priv(addr) {
             true => Ok(self.csr[addr as usize]),
-            false => Err(Exception::IllegalInst),
+            false => Err(Exception {
+                excpt_type: ExceptionType::IllegalInst,
+                addr: self.pc.wrapping_sub(4),
+            }),
         }
     }
 
@@ -430,7 +448,10 @@ impl Core {
                 }
                 Ok(())
             }
-            false => Err(Exception::IllegalInst),
+            false => Err(Exception {
+                excpt_type: ExceptionType::IllegalInst,
+                addr: self.pc.wrapping_sub(4),
+            }),
         }
     }
     fn update_addr_mode(&mut self, val: u64) {
@@ -728,12 +749,17 @@ impl Core {
                         };
 
                         self.csr[epc_addr as usize] = self.pc.wrapping_sub(4);
-                        return match self.priv_mode {
-                            PrivMode::User => Err(Exception::EnvCallFromUMode),
-                            PrivMode::Supervisor => Err(Exception::EnvCallFromSMode),
-                            PrivMode::Machine => Err(Exception::EnvCallFromMMode),
+                        let excpt_type = match self.priv_mode {
+                            PrivMode::User => ExceptionType::EnvCallFromUMode,
+                            PrivMode::Supervisor => ExceptionType::EnvCallFromSMode,
+                            PrivMode::Machine => ExceptionType::EnvCallFromMMode,
                             _ => panic!(),
                         };
+
+                        return Err(Exception {
+                            excpt_type: excpt_type,
+                            addr: self.pc.wrapping_sub(4),
+                        });
                     }
                     Inst::EBREAK => {
                         // HACK: no impl

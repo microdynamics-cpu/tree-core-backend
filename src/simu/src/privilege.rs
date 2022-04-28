@@ -5,7 +5,8 @@ pub enum PrivMode {
     Machine,
 }
 
-pub enum Exception {
+
+pub enum ExceptionType {
     EnvCallFromMMode,
     EnvCallFromUMode,
     EnvCallFromSMode,
@@ -13,6 +14,11 @@ pub enum Exception {
     InstPageFault,
     LoadPageFault,
     StorePageFault,
+}
+
+pub struct Exception {
+    pub excpt_type: ExceptionType,
+    pub addr: u64,
 }
 
 pub fn get_priv_mode_name(mode: &PrivMode) -> &'static str {
@@ -35,13 +41,13 @@ pub fn get_priv_encoding(mode: &PrivMode) -> u8 {
 }
 
 pub fn get_exception_cause(exception: &Exception) -> u64 {
-    match exception {
-        Exception::IllegalInst => 2,
-        Exception::EnvCallFromUMode => 8,
-        Exception::EnvCallFromSMode => 9,
-        Exception::EnvCallFromMMode => 11,
-        Exception::InstPageFault => 12,
-        Exception::LoadPageFault => 13,
-        Exception::StorePageFault => 15,
+    match exception.excpt_type {
+        ExceptionType::IllegalInst => 2,
+        ExceptionType::EnvCallFromUMode => 8,
+        ExceptionType::EnvCallFromSMode => 9,
+        ExceptionType::EnvCallFromMMode => 11,
+        ExceptionType::InstPageFault => 12,
+        ExceptionType::LoadPageFault => 13,
+        ExceptionType::StorePageFault => 15,
     }
 }
