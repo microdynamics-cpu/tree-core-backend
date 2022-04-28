@@ -57,7 +57,7 @@ impl Core {
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc, true) {
                 Ok(w) => w == 0x0000_0073u32,
-                Err(e) => panic!(),
+                Err(_e) => panic!(),
             };
 
             if end {
@@ -93,7 +93,10 @@ impl Core {
         if self.debug {
             inst_trace(self.pc, word, &inst);
         }
-        self.exec(word, inst);
+        match self.exec(word, inst) {
+            Ok(()) => {}
+            Err(e) => self.handle_trap(e),
+        };
         Ok(())
     }
 
@@ -131,7 +134,7 @@ impl Core {
     fn fetch(&mut self) -> Result<u32, Exception> {
         let word = match self.load_word(self.pc, true) {
             Ok(w) => w,
-            Err(e) => {
+            Err(_e) => {
                 self.pc = self.pc.wrapping_add(4);
                 return Err(Exception::InstPageFault);
             }
@@ -142,13 +145,16 @@ impl Core {
 
     fn load_byte(&self, addr: u64, trans: bool) -> Result<u8, Exception> {
         let phy_addr = match trans {
-            true => addr, // HACK: fake
+            true => match self.trans_addr(addr, MAType::Read) {
+                Ok(v) => v,
+                Err(_e) => return Err(Exception::LoadPageFault),
+            },
             false => addr,
         };
         // HACK: bound check!!
         Ok(self.mem[match self.xlen {
-            XLen::X32 => addr & 0xFFFF_FFFF,
-            XLen::X64 => addr,
+            XLen::X32 => phy_addr & 0xFFFF_FFFF,
+            XLen::X64 => phy_addr,
         } as usize])
     }
 
@@ -187,13 +193,16 @@ impl Core {
 
     fn store_byte(&mut self, addr: u64, val: u8, trans: bool) -> Result<(), Exception> {
         let phy_addr = match trans {
-            true => addr, // HACK: fake
+            true => match self.trans_addr(addr, MAType::Write) {
+                Ok(v) => v,
+                Err(_e) => return Err(Exception::StorePageFault),
+            },
             false => addr,
         };
 
         self.mem[match self.xlen {
-            XLen::X32 => addr & 0xFFFF_FFFF,
-            XLen::X64 => addr,
+            XLen::X32 => phy_addr & 0xFFFF_FFFF,
+            XLen::X64 => phy_addr,
         } as usize] = val;
         Ok(())
     }
@@ -240,14 +249,13 @@ impl Core {
         Ok(())
     }
 
-    fn trans_addr(&mut self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
+    fn trans_addr(&self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
         match self.addr_mode {
             AddrMode::None => Ok(addr),
             AddrMode::SV32 => match self.priv_mode {
                 PrivMode::User | PrivMode::Supervisor => {
                     let vpns = [(addr >> 12) & 0x3FF, (addr >> 22) & 0x3FF];
-                    // self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
-                    Ok(addr)
+                    self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
                 }
                 _ => Ok(addr),
             },
@@ -255,9 +263,119 @@ impl Core {
         }
     }
 
-    // fn trav_page(&self, ) -> Result<u64, ()> {
+    fn trav_page(
+        &self,
+        virt_addr: u64,
+        level: u8,
+        parent_ppn: u64,
+        vpns: &[u64],
+        access_type: MAType,
+    ) -> Result<u64, ()> {
+        let pagesize = 4096;
+        let ptesize = 4;
+        let pte_addr = parent_ppn * pagesize + vpns[level as usize] * ptesize;
+        let pte = match self.load_word(pte_addr, false) {
+            Ok(v) => v,
+            Err(_e) => panic!(),
+        } as u64;
+        let ppn = (pte >> 10) & 0x3fffff;
+        let ppns = [(pte >> 10) & 0x3ff, (pte >> 20) & 0xfff];
+        let _rsw = (pte >> 8) & 0x3;
+        let d = (pte >> 7) & 1;
+        let a = (pte >> 6) & 1;
+        let _g = (pte >> 5) & 1;
+        let _u = (pte >> 4) & 1;
+        let x = (pte >> 3) & 1;
+        let w = (pte >> 2) & 1;
+        let r = (pte >> 1) & 1;
+        let v = pte & 1;
 
-    // }
+        // println!("VA:{:X} Level:{:X} PTE_AD:{:X} PTE:{:X} PPN:{:X} PPN1:{:X} PPN0:{:X}", v_address, level, pte_addr, pte, ppn, ppns[1], ppns[0]);
+
+        if v == 0 || (r == 0 && w == 1) {
+            return Err({});
+        }
+
+        if r == 0 && x == 0 {
+            return match level {
+                0 => Err(()),
+                _ => self.trav_page(virt_addr, level - 1, ppn, vpns, access_type),
+            };
+        }
+
+        if a == 0 {
+            return Err(());
+        }
+
+        match access_type {
+            MAType::Read => {}
+            MAType::Write => {
+                if d == 0 {
+                    return Err(());
+                }
+            }
+        };
+
+        let offset = virt_addr & 0xFFF; // [11:0]
+                                        // @TODO: Here is SV32 specific. Fix me.
+        let p_address = match level {
+            1 => {
+                if ppns[0] != 0 {
+                    return Err(());
+                }
+                ((ppns[1]) << 22) | (vpns[0] << 12) | offset
+            }
+            0 => ((ppn) << 12) | offset,
+            _ => panic!(),
+        };
+        // println!("PA:{:X}", p_address);
+        Ok(p_address)
+    }
+
+    fn get_csr_access_priv(&self, addr: u16) -> bool {
+        let priv_val = (addr >> 8) & 0x3;
+        (priv_val as u8) <= get_priv_encoding(&self.priv_mode)
+    }
+
+    fn read_csr(&self, addr: u16) -> Result<u64, Exception> {
+        match self.get_csr_access_priv(addr) {
+            true => Ok(self.csr[addr as usize]),
+            false => Err(Exception::IllegalInst),
+        }
+    }
+
+    fn write_csr(&mut self, addr: u16, val: u64) -> Result<(), Exception> {
+        match self.get_csr_access_priv(addr) {
+            true => {
+                self.csr[addr as usize] = val;
+                if addr == csr::CSR_SATP_ADDR {
+                    self.update_addr_mode(val);
+                }
+                Ok(())
+            }
+            false => Err(Exception::IllegalInst),
+        }
+    }
+    fn update_addr_mode(&mut self, val: u64) {
+        self.addr_mode = match self.xlen {
+            XLen::X32 => match val & 0x8000_0000 {
+                0 => AddrMode::None,
+                1 => AddrMode::SV32,
+                _ => panic!(),
+            },
+            XLen::X64 => match val & 0xF000_0000_0000_0000u64 {
+                0 => AddrMode::None,
+                8 => AddrMode::SV39,
+                9 => AddrMode::SV48,
+                _ => panic!(),
+            },
+        };
+
+        self.ppn = match self.xlen {
+            XLen::X32 => val & 0x3FFFFF,
+            XLen::X64 => val & 0xFFFFFFFFFFF,
+        }
+    }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i64 {
         let inst = Word::new(word);
@@ -525,7 +643,20 @@ impl Core {
                         // HACK: no impl
                     }
                     Inst::ECALL => {
-                        // HACK: no impl
+                        let epc_addr = match self.priv_mode {
+                            PrivMode::User => csr::CSR_UEPC_ADDR,
+                            PrivMode::Supervisor => csr::CSR_SEPC_ADDR,
+                            PrivMode::Machine => csr::CSR_MEPC_ADDR,
+                            _ => panic!(),
+                        };
+
+                        self.csr[epc_addr as usize] = self.pc.wrapping_sub(4);
+                        return match self.priv_mode {
+                            PrivMode::User => Err(Exception::EnvCallFromUMode),
+                            PrivMode::Supervisor => Err(Exception::EnvCallFromSMode),
+                            PrivMode::Machine => Err(Exception::EnvCallFromMMode),
+                            _ => panic!(),
+                        };
                     }
                     Inst::EBREAK => {
                         // HACK: no impl
@@ -830,9 +961,35 @@ impl Core {
                         }
                     }
                     Inst::URET => {}
-                    Inst::SRET => {}
+                    Inst::SRET => {
+                        self.pc = match self.read_csr(csr::CSR_SEPC_ADDR) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
+
+                        self.priv_mode = match self.csr[csr::CSR_SSTATUS_ADDR as usize] & 0x100u64 {
+                            0 => PrivMode::User,
+                            _ => {
+                                self.csr[csr::CSR_SSTATUS_ADDR as usize] &= !0x100;
+                                PrivMode::Supervisor
+                            }
+                        }
+                    }
                     Inst::SFENCEVMA => {}
-                    Inst::MRET => {}
+                    Inst::MRET => {
+                        self.pc = match self.read_csr(csr::CSR_MEPC_ADDR) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
+
+                        self.priv_mode =
+                            match (self.csr[csr::CSR_MSTATUS_ADDR as usize] >> 11) & 0x3 {
+                                0 => PrivMode::User,
+                                1 => PrivMode::Supervisor,
+                                2 => PrivMode::Machine,
+                                _ => panic!(),
+                            }
+                    }
                     _ => {
                         panic!()
                     }
@@ -997,27 +1154,51 @@ impl Core {
             InstType::C => {
                 let rd = inst_wrap.val(11, 7);
                 let rs1 = inst_wrap.val(19, 15);
-                let csr = inst_wrap.val(31, 20);
+                let csr = inst_wrap.val(31, 20) as u16;
 
                 match inst {
                     Inst::CSRRW => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] = self.regfile.x[rs1 as usize] as u64;
+                        match self.write_csr(csr, self.regfile.x[rs1 as usize] as u64) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::CSRRS => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] =
-                            self.csr[csr as usize] | self.regfile.x[rs1 as usize] as u64;
+                        match self.write_csr(
+                            csr,
+                            (self.regfile.x[rd as usize] | self.regfile.x[rs1 as usize]) as u64,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::CSRRWI => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] = rs1 as u64;
+                        match self.write_csr(csr, rs1 as u64) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
+                        // self.csr[csr as usize] = rs1 as u64;
                     }
                     _ => {
                         panic!();

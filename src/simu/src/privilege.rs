@@ -1,5 +1,3 @@
-use crate::csr;
-
 pub enum PrivMode {
     User,
     Supervisor,
