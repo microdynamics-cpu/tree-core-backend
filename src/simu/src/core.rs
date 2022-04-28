@@ -373,12 +373,12 @@ impl Core {
     }
     fn update_addr_mode(&mut self, val: u64) {
         self.addr_mode = match self.xlen {
-            XLen::X32 => match val & 0x8000_0000u64 {
+            XLen::X32 => match val >> 31 {
                 0 => AddrMode::None,
                 1 => AddrMode::SV32,
                 _ => panic!(),
             },
-            XLen::X64 => match val & 0xF000_0000_0000_0000u64 {
+            XLen::X64 => match val >> 60 {
                 0 => AddrMode::None,
                 8 => AddrMode::SV39,
                 9 => AddrMode::SV48,
