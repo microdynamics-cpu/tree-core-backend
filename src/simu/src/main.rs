@@ -34,6 +34,10 @@ struct Args {
     #[clap(short, long)]
     xlen: String,
 
+    /// Bit width of the processor
+    #[clap(short, long)]
+    start_addr: String,
+
     /// Interactive mode
     #[clap(short, long)]
     inter: bool,
@@ -55,6 +59,10 @@ fn main() -> std::io::Result<()> {
             "x32" => XLen::X32,
             "x64" => XLen::X64,
             _ => panic!(),
+        },
+        match u64::from_str_radix(args.start_addr.as_str().trim_start_matches("0x"), 16) {
+            Ok(v) => v,
+            Err(_e) => panic!("need to set the right format!, the right format: 0xXXXX"),
         },
     );
     core.run_simu(contents);

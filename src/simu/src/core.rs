@@ -10,13 +10,14 @@ use crate::privilege::{
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
 
-const START_ADDR: u64 = 0x1000u64;
+// const self.start_addr: u64 = 0x1000u64;
 const MEM_CAPACITY: usize = 1024 * 512;
 const CSR_CAPACITY: usize = 4096;
 
 pub struct Core {
     regfile: Regfile,
     pc: u64,
+    start_addr: u64,
     ppn: u64,
     priv_mode: PrivMode,
     addr_mode: AddrMode,
@@ -34,11 +35,12 @@ pub enum XLen {
 }
 
 impl Core {
-    pub fn new(debug_val: bool, xlen_val: XLen) -> Self {
+    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
             ppn: 0u64,
+            start_addr: start_addr,
             priv_mode: PrivMode::Machine,
             addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
@@ -54,7 +56,7 @@ impl Core {
             self.mem[i] = data[i];
         }
 
-        self.pc = START_ADDR;
+        self.pc = self.start_addr;
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc, true) {
@@ -148,7 +150,7 @@ impl Core {
 
     fn load_phy_mem(&self, addr: u64) -> u8 {
         // boundery check
-        if addr < START_ADDR {
+        if addr < self.start_addr {
             panic!("[load]mem out of boundery");
         }
         self.mem[addr as usize]
@@ -208,7 +210,7 @@ impl Core {
     }
 
     fn store_phy_mem(&mut self, addr: u64, val: u8) {
-        if addr < START_ADDR {
+        if addr < self.start_addr {
             panic!("[store]mem out of boundery");
         }
 
