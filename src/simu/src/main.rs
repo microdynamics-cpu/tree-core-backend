@@ -1,7 +1,7 @@
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::Read;
 use clap::Parser;
+use std::fs::File;
+// use std::io::prelude::*;
+use std::io::{Read, Write};
 use treecore_simu::core::{Core, XLen};
 use treecore_simu::shell::{Shell, ShellIO};
 
@@ -17,7 +17,6 @@ fn interactive_mode() {
 
     shell.run_loop(&mut ShellIO::default());
 }
-
 
 /// RISCV ISA Simulator Component
 #[derive(Parser, Debug)]
@@ -42,7 +41,6 @@ struct Args {
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    
     if args.inter {
         interactive_mode();
         return Ok(());
@@ -51,12 +49,14 @@ fn main() -> std::io::Result<()> {
     let mut file = File::open(args.bin)?;
     let mut contents = vec![];
     file.read_to_end(&mut contents)?;
-    let mut core = Core::new(args.debug, match args.xlen.as_str() {
-        "x32" => XLen::X32,
-        "x64" => XLen::X64,
-        _ => panic!(),
-    });
+    let mut core = Core::new(
+        args.debug,
+        match args.xlen.as_str() {
+            "x32" => XLen::X32,
+            "x64" => XLen::X64,
+            _ => panic!(),
+        },
+    );
     core.run_simu(contents);
-
     Ok(())
 }
