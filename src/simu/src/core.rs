@@ -108,6 +108,7 @@ impl Core {
             };
         match self.priv_mode {
             PrivMode::Supervisor => {
+                self.csr[csr::CSR_SEPC_ADDR as usize] = self.pc.wrapping_sub(4);
                 self.csr[csr::CSR_SCAUSE_ADDR as usize] = get_exception_cause(&excpt);
                 self.csr[csr::CSR_STVAL_ADDR as usize] = excpt.addr;
                 self.pc = self.csr[csr::CSR_STVEC_ADDR as usize];
@@ -117,6 +118,7 @@ impl Core {
                         | ((cur_priv_encode & 1) << 8);
             }
             PrivMode::Machine => {
+                self.csr[csr::CSR_MEPC_ADDR as usize] = self.pc.wrapping_sub(4);
                 self.csr[csr::CSR_MCAUSE_ADDR as usize] = get_exception_cause(&excpt);
                 self.csr[csr::CSR_MTVAL_ADDR as usize] = excpt.addr;
                 self.pc = self.csr[csr::CSR_MTVEC_ADDR as usize];
