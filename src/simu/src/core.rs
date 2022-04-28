@@ -132,7 +132,7 @@ impl Core {
             Ok(w) => w,
             Err(_e) => {
                 self.pc = self.pc.wrapping_add(4);
-                return Err(Exception::InstPageFault); // HACK: can remove?
+                return Err(Exception::InstPageFault); // NOTE: coverage the LoadPageFault
             }
         };
         self.pc = self.pc.wrapping_add(4);
@@ -323,9 +323,18 @@ impl Core {
         }
 
         match ma_type {
-            MAType::Read => {}
+            MAType::Exec => {
+                if x == 0 {
+                    return Err({});
+                }
+            }
+            MAType::Read => {
+                if r == 0 {
+                    return Err({});
+                }
+            }
             MAType::Write => {
-                if d == 0 {
+                if d == 0 || w == 0 {
                     return Err(());
                 }
             }

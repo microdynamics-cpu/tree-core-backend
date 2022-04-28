@@ -6,6 +6,7 @@ pub enum AddrMode {
 }
 
 pub enum MAType {
+    Exec,
     Read,
     Write,
 }
