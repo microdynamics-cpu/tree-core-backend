@@ -93,11 +93,7 @@ impl Core {
         if self.debug {
             inst_trace(self.pc, word, &inst);
         }
-        match self.exec(word, inst) {
-            Ok(()) => {}
-            Err(e) => self.handle_trap(e),
-        };
-        Ok(())
+        self.exec(word, inst)
     }
 
     fn handle_trap(&mut self, excpt: Exception) {
@@ -136,11 +132,19 @@ impl Core {
             Ok(w) => w,
             Err(_e) => {
                 self.pc = self.pc.wrapping_add(4);
-                return Err(Exception::InstPageFault);
+                return Err(Exception::InstPageFault); // HACK: can remove?
             }
         };
         self.pc = self.pc.wrapping_add(4);
         Ok(word)
+    }
+
+    fn load_phy_mem(&self, addr: u64) -> u8 {
+        // boundery check
+        if addr < START_ADDR {
+            panic!("[load]mem out of boundery");
+        }
+        self.mem[addr as usize]
     }
 
     fn load_byte(&self, addr: u64, trans: bool) -> Result<u8, Exception> {
@@ -151,11 +155,11 @@ impl Core {
             },
             false => addr,
         };
-        // HACK: bound check!!
-        Ok(self.mem[match self.xlen {
+
+        Ok(self.load_phy_mem(match self.xlen {
             XLen::X32 => phy_addr & 0xFFFF_FFFF,
             XLen::X64 => phy_addr,
-        } as usize])
+        }))
     }
 
     fn load_halfword(&self, addr: u64, trans: bool) -> Result<u16, Exception> {
@@ -191,6 +195,14 @@ impl Core {
         Ok(res)
     }
 
+    fn store_phy_mem(&mut self, addr: u64, val: u8) {
+        if addr < START_ADDR {
+            panic!("[store]mem out of boundery");
+        }
+
+        self.mem[addr as usize] = val;
+    }
+
     fn store_byte(&mut self, addr: u64, val: u8, trans: bool) -> Result<(), Exception> {
         let phy_addr = match trans {
             true => match self.trans_addr(addr, MAType::Write) {
@@ -200,10 +212,13 @@ impl Core {
             false => addr,
         };
 
-        self.mem[match self.xlen {
-            XLen::X32 => phy_addr & 0xFFFF_FFFF,
-            XLen::X64 => phy_addr,
-        } as usize] = val;
+        self.store_phy_mem(
+            match self.xlen {
+                XLen::X32 => phy_addr & 0xFFFF_FFFF,
+                XLen::X64 => phy_addr,
+            },
+            val,
+        );
         Ok(())
     }
 
@@ -257,7 +272,7 @@ impl Core {
                     let vpns = [(addr >> 12) & 0x3FF, (addr >> 22) & 0x3FF];
                     self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
                 }
-                _ => Ok(addr),
+                _ => Ok(addr), // HACK: not impl for sv39 and sv48
             },
             _ => panic!(),
         }
@@ -269,7 +284,7 @@ impl Core {
         level: u8,
         parent_ppn: u64,
         vpns: &[u64],
-        access_type: MAType,
+        ma_type: MAType,
     ) -> Result<u64, ()> {
         let pagesize = 4096;
         let ptesize = 4;
@@ -278,8 +293,8 @@ impl Core {
             Ok(v) => v,
             Err(_e) => panic!(),
         } as u64;
-        let ppn = (pte >> 10) & 0x3fffff;
-        let ppns = [(pte >> 10) & 0x3ff, (pte >> 20) & 0xfff];
+        let ppn = (pte >> 10) & 0x3FFFFF;
+        let ppns = [(pte >> 10) & 0x3FF, (pte >> 20) & 0xFFF];
         let _rsw = (pte >> 8) & 0x3;
         let d = (pte >> 7) & 1;
         let a = (pte >> 6) & 1;
@@ -299,7 +314,7 @@ impl Core {
         if r == 0 && x == 0 {
             return match level {
                 0 => Err(()),
-                _ => self.trav_page(virt_addr, level - 1, ppn, vpns, access_type),
+                _ => self.trav_page(virt_addr, level - 1, ppn, vpns, ma_type),
             };
         }
 
@@ -307,7 +322,7 @@ impl Core {
             return Err(());
         }
 
-        match access_type {
+        match ma_type {
             MAType::Read => {}
             MAType::Write => {
                 if d == 0 {
@@ -318,7 +333,7 @@ impl Core {
 
         let offset = virt_addr & 0xFFF; // [11:0]
                                         // @TODO: Here is SV32 specific. Fix me.
-        let p_address = match level {
+        let phy_addr = match level {
             1 => {
                 if ppns[0] != 0 {
                     return Err(());
@@ -328,8 +343,8 @@ impl Core {
             0 => ((ppn) << 12) | offset,
             _ => panic!(),
         };
-        // println!("PA:{:X}", p_address);
-        Ok(p_address)
+        // println!("PA:{:X}", phy_addr);
+        Ok(phy_addr)
     }
 
     fn get_csr_access_priv(&self, addr: u16) -> bool {
@@ -358,7 +373,7 @@ impl Core {
     }
     fn update_addr_mode(&mut self, val: u64) {
         self.addr_mode = match self.xlen {
-            XLen::X32 => match val & 0x8000_0000 {
+            XLen::X32 => match val & 0x8000_0000u64 {
                 0 => AddrMode::None,
                 1 => AddrMode::SV32,
                 _ => panic!(),
@@ -986,7 +1001,7 @@ impl Core {
                             match (self.csr[csr::CSR_MSTATUS_ADDR as usize] >> 11) & 0x3 {
                                 0 => PrivMode::User,
                                 1 => PrivMode::Supervisor,
-                                2 => PrivMode::Machine,
+                                3 => PrivMode::Machine,
                                 _ => panic!(),
                             }
                     }
