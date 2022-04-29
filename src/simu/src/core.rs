@@ -8,6 +8,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
+use crate::config::XLen;
 use crate::trace::{inst_trace, regfile_trace};
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -27,12 +28,6 @@ pub struct Core {
     inst_num: u64,
     xlen: XLen,
     debug: bool,
-}
-
-#[derive(Debug)]
-pub enum XLen {
-    X32,
-    X64,
 }
 
 impl Core {
@@ -55,6 +50,7 @@ impl Core {
 
     pub fn run_simu(&mut self, data: Vec<u8>) {
         for i in 0..data.len() {
+            // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
 
@@ -95,7 +91,7 @@ impl Core {
             Ok(w) => w,
             Err(e) => return Err(e),
         };
-        let inst = Decode::decode(self.pc, word);
+        let inst = Decode::decode(self.pc, word, &self.xlen);
         if self.debug {
             inst_trace(self.pc, word, &inst);
         }
@@ -155,7 +151,11 @@ impl Core {
         if addr < self.start_addr {
             panic!("[load]mem out of boundery");
         }
-        self.mem[addr as usize]
+        // HACK: need to debug seek for season
+        match self.start_addr {
+            0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
+            _ => self.mem[addr as usize],
+        }
     }
 
     fn load_byte(&self, addr: u64, trans: bool) -> Result<u8, Exception> {
@@ -216,7 +216,11 @@ impl Core {
             panic!("[store]mem out of boundery");
         }
 
-        self.mem[addr as usize] = val;
+        // HACK: need to debug seek for season
+        match self.start_addr {
+            0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
+            _ => self.mem[addr as usize] = val,
+        }
     }
 
     fn store_byte(&mut self, addr: u64, val: u8, trans: bool) -> Result<(), Exception> {

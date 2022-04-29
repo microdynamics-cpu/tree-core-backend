@@ -2,7 +2,8 @@ use clap::Parser;
 use std::fs::File;
 // use std::io::prelude::*;
 use std::io::{Read, Write};
-use treecore_simu::core::{Core, XLen};
+use treecore_simu::core::{Core};
+use treecore_simu::config::XLen;
 use treecore_simu::shell::{Shell, ShellIO};
 
 fn interactive_mode() {
