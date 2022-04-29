@@ -18,6 +18,7 @@ pub struct Core {
     regfile: Regfile,
     pc: u64,
     start_addr: u64,
+    end_inst: u32,
     ppn: u64,
     priv_mode: PrivMode,
     addr_mode: AddrMode,
@@ -35,12 +36,13 @@ pub enum XLen {
 }
 
 impl Core {
-    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64) -> Self {
+    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
             ppn: 0u64,
             start_addr: start_addr,
+            end_inst: end_inst,
             priv_mode: PrivMode::Machine,
             addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
@@ -60,7 +62,7 @@ impl Core {
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc, true) {
-                Ok(w) => w == 0x0000_0073u32,
+                Ok(w) => w == self.end_inst,
                 Err(_e) => panic!(),
             };
 

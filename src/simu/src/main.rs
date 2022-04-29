@@ -34,9 +34,13 @@ struct Args {
     #[clap(short, long)]
     xlen: String,
 
-    /// Bit width of the processor
-    #[clap(short, long)]
+    /// Start addr of the processor
+    #[clap(short, long, default_value = "0x80000000")]
     start_addr: String,
+
+    /// End inst
+    #[clap(short, long)]
+    end_inst: String,
 
     /// Interactive mode
     #[clap(short, long)]
@@ -61,6 +65,10 @@ fn main() -> std::io::Result<()> {
             _ => panic!(),
         },
         match u64::from_str_radix(args.start_addr.as_str().trim_start_matches("0x"), 16) {
+            Ok(v) => v,
+            Err(_e) => panic!("need to set the right format!, the right format: 0xXXXX"),
+        },
+        match u32::from_str_radix(args.end_inst.as_str().trim_start_matches("0x"), 16) {
             Ok(v) => v,
             Err(_e) => panic!("need to set the right format!, the right format: 0xXXXX"),
         },
