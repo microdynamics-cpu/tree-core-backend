@@ -46,7 +46,9 @@ impl Rtc {
                 self.loading_flag = false;
             }
         }
-        (self.buf >> self.cnt) as u8
+        // println!("elapsed: {:08x}", self.buf);
+        // println!("cnt: {}, data: {:08x}\n", self.cnt, (self.buf >> (self.cnt * 8)) as u8);
+        (self.buf >> (self.cnt * 8)) as u8
     }
 }
 
