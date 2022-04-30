@@ -10,10 +10,13 @@ use crate::privilege::{
 use crate::regfile::Regfile;
 use crate::config::XLen;
 use crate::trace::{inst_trace, regfile_trace};
+use crate::device::Uart;
 
 // const self.start_addr: u64 = 0x1000u64;
 const MEM_CAPACITY: usize = 1024 * 512;
 const CSR_CAPACITY: usize = 4096;
+const PERIF_START_ADDR: u64 = 0xa1000000u64;
+const PERIF_ADDR_SIZE: u64 = 0x1000u64;
 
 pub struct Core {
     regfile: Regfile,
@@ -151,6 +154,11 @@ impl Core {
         if addr < self.start_addr {
             panic!("[load]mem out of boundery");
         }
+
+        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+            println!("hello");
+            panic!();
+        }
         // HACK: need to debug seek for season
         match self.start_addr {
             0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
@@ -216,6 +224,10 @@ impl Core {
             panic!("[store]mem out of boundery");
         }
 
+        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+            Uart::out(val);
+            return;
+        }
         // HACK: need to debug seek for season
         match self.start_addr {
             0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
