@@ -52,6 +52,15 @@ impl Rtc {
     }
 }
 
+pub struct Keyboard {
+    code: u8, // default: 0
+    press: bool,
+}
+
+impl Keyboard {
+
+}
+
 pub struct Device {
     pub rtc: Rtc,
 }

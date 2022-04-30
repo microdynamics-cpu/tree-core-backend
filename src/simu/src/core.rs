@@ -21,7 +21,8 @@ const SERIAL_START_OFFSET: u64 = 0x3F8u64;
 // const SERIAL_ADDR_SIZE: u64 = 0x4u64;
 const RTC_START_OFFSET: u64 = 0x48u64;
 const RTC_ADDR_SIZE: u64 = 0x08u64;
-// const KDB_START_OFFSET: u64 = 0x60u64;
+const KDB_START_OFFSET: u64 = 0x60u64;
+const KDB_ADDR_OFFSET: u64 = 0x04u64; // only device -> core
 
 pub struct Core {
     regfile: Regfile,
