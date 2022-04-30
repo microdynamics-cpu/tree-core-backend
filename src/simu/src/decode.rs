@@ -1,15 +1,17 @@
 use crate::data::Word;
 use crate::inst::Inst;
+use crate::config::XLen;
 use crate::trace;
 
 pub struct Decode {}
 
 impl Decode {
-    pub fn decode(pc: u64, word: u32) -> Inst {
+    pub fn decode(pc: u64, word: u32, xlen: &XLen) -> Inst {
         let inst = Word::new(word);
         let opcode = inst.val(6, 0);
         let func3 = inst.val(14, 12);
         let func7 = inst.val(31, 25);
+        let func6 = inst.val(31, 26);
         match opcode {
             0x03 => {
                 return match func3 {
@@ -31,15 +33,23 @@ impl Decode {
             }
             0x13 => {
                 return match func3 {
+                    // NOTE: different between 32 and 64 bit ISA
                     0 => Inst::ADDI,
                     1 => Inst::SLLI,
                     2 => Inst::SLTI,
                     3 => Inst::SLTIU,
                     4 => Inst::XORI,
-                    5 => match func7 {
-                        0x0 => Inst::SRLI,
-                        0x20 => Inst::SRAI,
-                        _ => panic!(),
+                    5 => match xlen {
+                        XLen::X32 => match func7 {
+                            0x00 => Inst::SRLI,
+                            0x20 => Inst::SRAI,
+                            _ => panic!(),
+                        },
+                        XLen::X64 => match func6 {
+                            0x00 => Inst::SRLI,
+                            0x10 => Inst::SRAI,
+                            _ => panic!(),
+                        },
                     },
                     6 => Inst::ORI,
                     7 => Inst::ANDI,
@@ -60,7 +70,7 @@ impl Decode {
                         0x00 => Inst::SRLIW,
                         0x20 => Inst::SRAIW,
                         _ => panic!(),
-                    }
+                    },
                     _ => panic!(),
                 }
             }
@@ -125,22 +135,20 @@ impl Decode {
             }
             0x3B => {
                 return match func3 {
-                    0 => {
-                        match func7 {
-                            0x00 => Inst::ADDW,
-                            0x01 => Inst::MULW,
-                            0x20 => Inst::SUBW,
-                            _ => panic!(),
-                        }
-                    }
+                    0 => match func7 {
+                        0x00 => Inst::ADDW,
+                        0x01 => Inst::MULW,
+                        0x20 => Inst::SUBW,
+                        _ => panic!(),
+                    },
                     1 => return Inst::SLLW,
                     4 => return Inst::DIVW,
                     5 => match func7 {
-                            0x00 => Inst::SRLW,
-                            0x01 => Inst::DIVUW,
-                            0x20 => Inst::SRAW,
-                            _ => panic!(),
-                        }
+                        0x00 => Inst::SRLW,
+                        0x01 => Inst::DIVUW,
+                        0x20 => Inst::SRAW,
+                        _ => panic!(),
+                    },
                     6 => return Inst::REMW,
                     7 => return Inst::REMUW,
                     _ => panic!(),
@@ -167,14 +175,26 @@ impl Decode {
                 return Inst::JAL;
             }
             0x73 => {
+                let rs2 = inst.val(24, 20);
                 return match func3 {
-                    0 => {
-                        if word == 0x30200073 {
-                            return Inst::MRET;
-                        } else {
-                            panic!();
+                    0 => match func7 {
+                        0 => match rs2 {
+                            0x00 => Inst::ECALL,
+                            0x01 => Inst::EBREAK,
+                            0x02 => Inst::URET,
+                            _ => panic!(),
+                        },
+                        0x08 => Inst::SRET,
+                        0x09 => Inst::SFENCEVMA,
+                        0x18 => Inst::MRET,
+                        _ => {
+                            println!(
+                                "Priviledged instruction 0x{:08x} is not supported yet",
+                                word
+                            );
+                            panic!()
                         }
-                    }
+                    },
                     1 => Inst::CSRRW,
                     2 => Inst::CSRRS,
                     5 => Inst::CSRRWI,
