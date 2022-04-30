@@ -1,35 +1,58 @@
+use crate::config::XLen;
+use crate::csr;
 use crate::data::Word;
 use crate::decode::Decode;
+use crate::device::{Device, Uart};
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
+use crate::mmu::AddrMode;
+use crate::mmu::MAType;
+use crate::privilege::{
+    get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
+};
 use crate::regfile::Regfile;
 use crate::trace::{inst_trace, regfile_trace};
 
-const MEM_CAPACITY: usize = 1024 * 16;
+// const self.start_addr: u64 = 0x1000u64;
+const MEM_CAPACITY: usize = 1024 * 1024;
 const CSR_CAPACITY: usize = 4096;
+const PERIF_START_ADDR: u64 = 0xa1000000u64;
+const PERIF_ADDR_SIZE: u64 = 0x1000u64;
+const SERIAL_START_OFFSET: u64 = 0x3F8u64;
+// const SERIAL_ADDR_SIZE: u64 = 0x4u64;
+const RTC_START_OFFSET: u64 = 0x48u64;
+const RTC_ADDR_SIZE: u64 = 0x08u64;
+const KDB_START_OFFSET: u64 = 0x60u64;
+const KDB_ADDR_OFFSET: u64 = 0x04u64; // only device -> core
 
 pub struct Core {
     regfile: Regfile,
     pc: u64,
+    start_addr: u64,
+    end_inst: u32,
+    ppn: u64,
+    priv_mode: PrivMode,
+    addr_mode: AddrMode,
     csr: [u64; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
+    dev: Device,
     inst_num: u64,
     xlen: XLen,
     debug: bool,
 }
 
-#[derive(Debug)]
-pub enum XLen {
-    X32,
-    X64,
-}
-
 impl Core {
-    pub fn new(debug_val: bool, xlen_val: XLen) -> Self {
+    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
+            ppn: 0u64,
+            start_addr: start_addr,
+            end_inst: end_inst,
+            priv_mode: PrivMode::Machine,
+            addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
+            dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
             debug: debug_val,
@@ -38,15 +61,16 @@ impl Core {
 
     pub fn run_simu(&mut self, data: Vec<u8>) {
         for i in 0..data.len() {
+            // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
 
-        self.pc = 0x1000;
+        self.pc = self.start_addr;
         loop {
             // println!("val: {:08x}", self.load_word(self.pc));
-            let end = match self.load_word(self.pc) {
-                0x0000_0073 => true,
-                _ => false,
+            let end = match self.load_word(self.pc, true) {
+                Ok(w) => w == self.end_inst,
+                Err(_e) => panic!(),
             };
 
             if end {
@@ -63,64 +87,446 @@ impl Core {
     }
 
     fn tick(&mut self) {
-        let word = self.fetch();
-        let inst = Decode::decode(self.pc, word);
-        if self.debug {
-            inst_trace(self.pc, word, &inst);
-        }
-        self.exec(word, inst);
+        match self.tick_wrap() {
+            Ok(()) => {}
+            Err(e) => self.handle_trap(e),
+        };
         // regfile_trace(&self.regfile, "ra");
         // regfile_trace(&self.regfile, "sp");
         // regfile_trace(&self.regfile, "a4");
         // regfile_trace(&self.regfile, "t2");
     }
 
-    fn fetch(&mut self) -> u32 {
-        let word = self.load_word(self.pc);
+    fn tick_wrap(&mut self) -> Result<(), Exception> {
+        let word = match self.fetch() {
+            Ok(w) => w,
+            Err(e) => return Err(e),
+        };
+        let inst = Decode::decode(self.pc, word, &self.xlen);
+        if self.debug {
+            inst_trace(self.pc, word, &inst);
+        }
+        self.exec(word, inst)
+    }
+
+    fn handle_trap(&mut self, excpt: Exception) {
+        let cur_priv_encode = get_priv_encoding(&self.priv_mode) as u64;
+        self.priv_mode =
+            match (self.csr[csr::CSR_MEDELEG_ADDR as usize] >> get_exception_cause(&excpt)) & 1 {
+                1u64 => PrivMode::Supervisor,
+                0u64 => PrivMode::Machine,
+                _ => panic!(),
+            };
+        match self.priv_mode {
+            PrivMode::Supervisor => {
+                self.csr[csr::CSR_SEPC_ADDR as usize] = self.pc.wrapping_sub(4);
+                self.csr[csr::CSR_SCAUSE_ADDR as usize] = get_exception_cause(&excpt);
+                self.csr[csr::CSR_STVAL_ADDR as usize] = excpt.addr;
+                self.pc = self.csr[csr::CSR_STVEC_ADDR as usize];
+                // override SPP bit[8] with the current privilege mode encoding
+                self.csr[csr::CSR_SSTATUS_ADDR as usize] =
+                    (self.csr[csr::CSR_SSTATUS_ADDR as usize] & !0x100)
+                        | ((cur_priv_encode & 1) << 8);
+            }
+            PrivMode::Machine => {
+                self.csr[csr::CSR_MEPC_ADDR as usize] = self.pc.wrapping_sub(4);
+                self.csr[csr::CSR_MCAUSE_ADDR as usize] = get_exception_cause(&excpt);
+                self.csr[csr::CSR_MTVAL_ADDR as usize] = excpt.addr;
+                self.pc = self.csr[csr::CSR_MTVEC_ADDR as usize];
+                // override MPP bits[12:11] with the current privilege mode encoding
+                self.csr[csr::CSR_MSTATUS_ADDR as usize] =
+                    (self.csr[csr::CSR_MSTATUS_ADDR as usize] & !0x1800)
+                        | ((cur_priv_encode & 1) << 11);
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn fetch(&mut self) -> Result<u32, Exception> {
+        let word = match self.load_word(self.pc, true) {
+            Ok(w) => w,
+            Err(_e) => {
+                self.pc = self.pc.wrapping_add(4);
+                return Err(Exception {
+                    excpt_type: ExceptionType::InstPageFault,
+                    addr: self.pc.wrapping_sub(4),
+                }); // NOTE: coverage the LoadPageFault
+            }
+        };
         self.pc = self.pc.wrapping_add(4);
-        word
+        Ok(word)
     }
 
-    fn load_byte(&self, addr: u64) -> u8 {
-        self.mem[match self.xlen {
-            XLen::X32 => addr & 0xFFFF_FFFF,
-            XLen::X64 => addr,
-        } as usize]
+    fn mmap_load_oper(&mut self, addr: u64) -> u8 {
+        // println!("addr: {:16x}", addr);
+        // HACK: range addr check
+        if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
+            panic!();
+        } else if addr >= PERIF_START_ADDR + RTC_START_OFFSET
+            && addr <= PERIF_START_ADDR + RTC_START_OFFSET + RTC_ADDR_SIZE
+        {
+            self.dev.rtc.val()
+        } else {
+            panic!();
+        }
     }
 
-    fn load_halfword(&self, addr: u64) -> u16 {
-        ((self.load_byte(addr.wrapping_add(1)) as u16) << 8) | (self.load_byte(addr) as u16)
+    fn mmap_store_oper(&self, addr: u64, val: u8) {
+        if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
+            Uart::out(val);
+        } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
+            panic!();
+        } else {
+            panic!();
+        }
     }
 
-    fn load_word(&self, addr: u64) -> u32 {
-        ((self.load_halfword(addr.wrapping_add(2)) as u32) << 16)
-            | (self.load_halfword(addr) as u32)
+    fn load_phy_mem(&mut self, addr: u64) -> u8 {
+        // boundery check
+        if addr < self.start_addr {
+            panic!("[load]mem out of boundery");
+        }
+
+        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+            self.mmap_load_oper(addr) // BUG: bit width!
+        } else {
+            // HACK: need to debug seek for season
+            match self.start_addr {
+                0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
+                _ => self.mem[addr as usize],
+            }
+        }
     }
 
-    fn load_doubleword(&self, addr: u64) -> u64 {
-        ((self.load_word(addr.wrapping_add(4)) as u64) << 32) | (self.load_word(addr) as u64)
+    fn load_byte(&mut self, addr: u64, trans: bool) -> Result<u8, Exception> {
+        let phy_addr = match trans {
+            true => match self.trans_addr(addr, MAType::Read) {
+                Ok(v) => v,
+                Err(_e) => {
+                    return Err(Exception {
+                        excpt_type: ExceptionType::LoadPageFault,
+                        addr: addr,
+                    })
+                }
+            },
+            false => addr,
+        };
+
+        Ok(self.load_phy_mem(match self.xlen {
+            XLen::X32 => phy_addr & 0xFFFF_FFFF,
+            XLen::X64 => phy_addr,
+        }))
     }
 
-    fn store_byte(&mut self, addr: u64, val: u8) {
-        self.mem[match self.xlen {
-            XLen::X32 => addr & 0xFFFF_FFFF,
-            XLen::X64 => addr,
-        } as usize] = val;
+    fn load_halfword(&mut self, addr: u64, trans: bool) -> Result<u16, Exception> {
+        let mut res = 0u16;
+        for i in 0..2 {
+            match self.load_byte(addr.wrapping_add(i), trans) {
+                Ok(v) => res |= (v as u16) << (8 * i),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn store_halfword(&mut self, addr: u64, val: u16) {
-        self.store_byte(addr, (val & 0xFFu16) as u8);
-        self.store_byte(addr.wrapping_add(1), ((val >> 8) & 0xFFu16) as u8);
+    fn load_word(&mut self, addr: u64, trans: bool) -> Result<u32, Exception> {
+        let mut res = 0u32;
+        for i in 0..2 {
+            match self.load_halfword(addr.wrapping_add(i * 2), trans) {
+                Ok(v) => res |= (v as u32) << (8 * i * 2),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn store_word(&mut self, addr: u64, val: u32) {
-        self.store_halfword(addr, (val & 0xFFFFu32) as u16);
-        self.store_halfword(addr.wrapping_add(2), ((val >> 16) & 0xFFFFu32) as u16);
+    fn load_doubleword(&mut self, addr: u64, trans: bool) -> Result<u64, Exception> {
+        let mut res = 0u64;
+        for i in 0..2 {
+            match self.load_word(addr.wrapping_add(i * 4), trans) {
+                Ok(v) => res |= (v as u64) << (8 * i * 4),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(res)
     }
 
-    fn store_doubleword(&mut self, addr: u64, val: u64) {
-        self.store_word(addr, (val & 0xFFFF_FFFFFu64) as u32);
-        self.store_word(addr.wrapping_add(4), ((val >> 32) & 0xFFFF_FFFFu64) as u32);
+    fn store_phy_mem(&mut self, addr: u64, val: u8) {
+        if addr < self.start_addr {
+            panic!("[store]mem out of boundery");
+        }
+
+        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+            self.mmap_store_oper(addr, val);
+        } else {
+            // HACK: need to debug seek for season
+            match self.start_addr {
+                0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
+                _ => self.mem[addr as usize] = val,
+            }
+        }
+    }
+
+    fn store_byte(&mut self, addr: u64, val: u8, trans: bool) -> Result<(), Exception> {
+        let phy_addr = match trans {
+            true => match self.trans_addr(addr, MAType::Write) {
+                Ok(v) => v,
+                Err(_e) => {
+                    return Err(Exception {
+                        excpt_type: ExceptionType::StorePageFault,
+                        addr: addr,
+                    })
+                }
+            },
+            false => addr,
+        };
+
+        self.store_phy_mem(
+            match self.xlen {
+                XLen::X32 => phy_addr & 0xFFFF_FFFF,
+                XLen::X64 => phy_addr,
+            },
+            val,
+        );
+        Ok(())
+    }
+
+    fn store_halfword(&mut self, addr: u64, val: u16, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_byte(
+                addr.wrapping_add(i),
+                (val >> (8 * i) & 0xFFu16) as u8,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
+    }
+
+    fn store_word(&mut self, addr: u64, val: u32, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_halfword(
+                addr.wrapping_add(i * 2),
+                (val >> (8 * i * 2) & 0xFFFFu32) as u16,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
+    }
+
+    fn store_doubleword(&mut self, addr: u64, val: u64, trans: bool) -> Result<(), Exception> {
+        for i in 0..2 {
+            match self.store_word(
+                addr.wrapping_add(i * 4),
+                (val >> (8 * i * 4) & 0xFFFF_FFFFFu64) as u32,
+                trans,
+            ) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(())
+    }
+
+    fn trans_addr(&mut self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
+        match self.addr_mode {
+            AddrMode::None => Ok(addr),
+            AddrMode::SV32 => match self.priv_mode {
+                PrivMode::User | PrivMode::Supervisor => {
+                    let vpns = [(addr >> 12) & 0x3FF, (addr >> 22) & 0x3FF];
+                    self.trav_page(addr, 2 - 1, self.ppn, &vpns, ma_type)
+                }
+                _ => Ok(addr),
+            },
+            AddrMode::SV39 => match self.priv_mode {
+                PrivMode::User | PrivMode::Supervisor => {
+                    let vpns = [
+                        (addr >> 12) & 0x1FF,
+                        (addr >> 21) & 0x1FF,
+                        (addr >> 30) & 0x1FF,
+                    ];
+                    self.trav_page(addr, 3 - 1, self.ppn, &vpns, ma_type)
+                }
+                _ => Ok(addr),
+            },
+            _ => panic!(), // HACK: not impl for sv48
+        }
+    }
+
+    fn trav_page(
+        &mut self,
+        virt_addr: u64,
+        level: u8,
+        parent_ppn: u64,
+        vpns: &[u64],
+        ma_type: MAType,
+    ) -> Result<u64, ()> {
+        let pagesize = 4096;
+        let ptesize = match self.addr_mode {
+            AddrMode::SV32 => 4,
+            _ => 8, // sv39 and sv48
+        };
+
+        let pte_addr = parent_ppn * pagesize + vpns[level as usize] * ptesize;
+        let pte = match self.addr_mode {
+            AddrMode::SV32 => match self.load_word(pte_addr, false) {
+                Ok(v) => v as u64,
+                Err(_e) => panic!(),
+            },
+            _ => match self.load_doubleword(pte_addr, false) {
+                Ok(v) => v as u64,
+                Err(_e) => panic!(),
+            },
+        };
+
+        let ppn = match self.addr_mode {
+            AddrMode::SV32 => (pte >> 10) & 0x3FFFFF,
+            AddrMode::SV39 => (pte >> 10) & 0xFFF_FFFF_FFFF,
+            _ => panic!(),
+        };
+
+        let ppns = match self.addr_mode {
+            AddrMode::SV32 => [(pte >> 10) & 0x3FF, (pte >> 20) & 0xFFF, 0],
+            AddrMode::SV39 => [
+                (pte >> 10) & 0x1FF,
+                (pte >> 19) & 0x1FF,
+                (pte >> 28) & 0x3FF_FFFF,
+            ],
+            _ => panic!(),
+        };
+
+        let _rsw = (pte >> 8) & 0x3;
+        let d = (pte >> 7) & 1;
+        let a = (pte >> 6) & 1;
+        let _g = (pte >> 5) & 1;
+        let _u = (pte >> 4) & 1;
+        let x = (pte >> 3) & 1;
+        let w = (pte >> 2) & 1;
+        let r = (pte >> 1) & 1;
+        let v = pte & 1;
+
+        // println!("VA:{:X} Level:{:X} PTE_AD:{:X} PTE:{:X} PPN:{:X} PPN1:{:X} PPN0:{:X}", v_address, level, pte_addr, pte, ppn, ppns[1], ppns[0]);
+
+        if v == 0 || (r == 0 && w == 1) {
+            return Err({});
+        }
+
+        if r == 0 && x == 0 {
+            return match level {
+                0 => Err(()),
+                _ => self.trav_page(virt_addr, level - 1, ppn, vpns, ma_type),
+            };
+        }
+
+        if a == 0 {
+            return Err(());
+        }
+
+        match ma_type {
+            MAType::Exec => {
+                if x == 0 {
+                    return Err({});
+                }
+            }
+            MAType::Read => {
+                if r == 0 {
+                    return Err({});
+                }
+            }
+            MAType::Write => {
+                if d == 0 || w == 0 {
+                    return Err(());
+                }
+            }
+        };
+
+        let offset = virt_addr & 0xFFF; // [11:0]
+        let phy_addr = match self.addr_mode {
+            AddrMode::SV32 => match level {
+                1 => {
+                    if ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[1] << 22) | (vpns[0] << 12) | offset
+                }
+                0 => (ppn << 12) | offset,
+                _ => panic!(), // Shouldn't happen
+            },
+            _ => match level {
+                2 => {
+                    if ppns[1] != 0 || ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[2] << 30) | (vpns[1] << 21) | (vpns[0] << 12) | offset
+                }
+                1 => {
+                    if ppns[0] != 0 {
+                        return Err(());
+                    }
+                    (ppns[2] << 30) | (ppns[1] << 21) | (vpns[0] << 12) | offset
+                }
+                0 => (ppn << 12) | offset,
+                _ => panic!(), // Shouldn't happen
+            },
+        };
+        // println!("PA:{:X}", phy_addr);
+        Ok(phy_addr)
+    }
+
+    fn get_csr_access_priv(&self, addr: u16) -> bool {
+        let priv_val = (addr >> 8) & 0x3;
+        (priv_val as u8) <= get_priv_encoding(&self.priv_mode)
+    }
+
+    fn read_csr(&self, addr: u16) -> Result<u64, Exception> {
+        match self.get_csr_access_priv(addr) {
+            true => Ok(self.csr[addr as usize]),
+            false => Err(Exception {
+                excpt_type: ExceptionType::IllegalInst,
+                addr: self.pc.wrapping_sub(4),
+            }),
+        }
+    }
+
+    fn write_csr(&mut self, addr: u16, val: u64) -> Result<(), Exception> {
+        match self.get_csr_access_priv(addr) {
+            true => {
+                self.csr[addr as usize] = val;
+                if addr == csr::CSR_SATP_ADDR {
+                    self.update_addr_mode(val);
+                }
+                Ok(())
+            }
+            false => Err(Exception {
+                excpt_type: ExceptionType::IllegalInst,
+                addr: self.pc.wrapping_sub(4),
+            }),
+        }
+    }
+    fn update_addr_mode(&mut self, val: u64) {
+        self.addr_mode = match self.xlen {
+            XLen::X32 => match val >> 31 {
+                0 => AddrMode::None,
+                1 => AddrMode::SV32,
+                _ => panic!(),
+            },
+            XLen::X64 => match val >> 60 {
+                0 => AddrMode::None,
+                8 => AddrMode::SV39,
+                9 => AddrMode::SV48,
+                _ => panic!(),
+            },
+        };
+
+        self.ppn = match self.xlen {
+            XLen::X32 => val & 0x3FFFFF,
+            XLen::X64 => val & 0xFFFFFFFFFFF,
+        }
     }
 
     fn imm_ext_gen(inst_type: InstType, word: u32) -> i64 {
@@ -176,7 +582,7 @@ impl Core {
         }
     }
 
-    fn exec(&mut self, word: u32, inst: Inst) {
+    fn exec(&mut self, word: u32, inst: Inst) -> Result<(), Exception> {
         let inst_type = get_instruction_type(&inst);
         let inst_wrap = Word::new(word);
         match inst_type {
@@ -325,43 +731,92 @@ impl Core {
                         }
                     }
                     Inst::LB => {
-                        self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i8 as i64; // NOTE: convert to i8 is important!!! different from 'LBU'
-                                          // println!("val: {}", self.regfile.x[rd as usize]);
+                        self.regfile.x[rd as usize] = match self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i8 as i64,
+                            Err(e) => return Err(e),
+                        };
+                        // NOTE: convert to i8 is important!!! different from 'LBU'
+                        // println!("val: {}", self.regfile.x[rd as usize]);
                     }
                     Inst::LH => {
-                        self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i16 as i64;
+                        self.regfile.x[rd as usize] = match self.load_halfword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i16 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LW => {
-                        self.regfile.x[rd as usize] = self
-                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i32 as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i32 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LD => {
-                        self.regfile.x[rd as usize] = self
-                            .load_doubleword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self.load_doubleword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LBU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_byte(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LHU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_halfword(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as i64;
+                        self.regfile.x[rd as usize] = match self.load_halfword(
+                            self.regfile.x[rs1 as usize].wrapping_add(imm) as u64,
+                            true,
+                        ) {
+                            Ok(v) => v as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::LWU => {
-                        self.regfile.x[rd as usize] = self
-                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64)
-                            as u32 as i64;
+                        self.regfile.x[rd as usize] = match self
+                            .load_word(self.regfile.x[rs1 as usize].wrapping_add(imm) as u64, true)
+                        {
+                            Ok(v) => v as u32 as i64,
+                            Err(e) => return Err(e),
+                        }
                     }
                     Inst::FENCE => {
-                        // no impl
+                        // HACK: no impl
+                    }
+                    Inst::ECALL => {
+                        let epc_addr = match self.priv_mode {
+                            PrivMode::User => csr::CSR_UEPC_ADDR,
+                            PrivMode::Supervisor => csr::CSR_SEPC_ADDR,
+                            PrivMode::Machine => csr::CSR_MEPC_ADDR,
+                            _ => panic!(),
+                        };
+
+                        self.csr[epc_addr as usize] = self.pc.wrapping_sub(4);
+                        let excpt_type = match self.priv_mode {
+                            PrivMode::User => ExceptionType::EnvCallFromUMode,
+                            PrivMode::Supervisor => ExceptionType::EnvCallFromSMode,
+                            PrivMode::Machine => ExceptionType::EnvCallFromMMode,
+                            _ => panic!(),
+                        };
+
+                        return Err(Exception {
+                            excpt_type: excpt_type,
+                            addr: self.pc.wrapping_sub(4),
+                        });
+                    }
+                    Inst::EBREAK => {
+                        // HACK: no impl
                     }
                     _ => {
                         println!(
@@ -662,7 +1117,36 @@ impl Core {
                             }
                         }
                     }
-                    Inst::MRET => {}
+                    Inst::URET => {}
+                    Inst::SRET => {
+                        self.pc = match self.read_csr(csr::CSR_SEPC_ADDR) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
+
+                        self.priv_mode = match self.csr[csr::CSR_SSTATUS_ADDR as usize] & 0x100u64 {
+                            0 => PrivMode::User,
+                            _ => {
+                                self.csr[csr::CSR_SSTATUS_ADDR as usize] &= !0x100;
+                                PrivMode::Supervisor
+                            }
+                        }
+                    }
+                    Inst::SFENCEVMA => {}
+                    Inst::MRET => {
+                        self.pc = match self.read_csr(csr::CSR_MEPC_ADDR) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
+
+                        self.priv_mode =
+                            match (self.csr[csr::CSR_MSTATUS_ADDR as usize] >> 11) & 0x3 {
+                                0 => PrivMode::User,
+                                1 => PrivMode::Supervisor,
+                                3 => PrivMode::Machine,
+                                _ => panic!(),
+                            }
+                    }
                     _ => {
                         panic!()
                     }
@@ -674,28 +1158,44 @@ impl Core {
                 let offset = Core::imm_ext_gen(InstType::S, word);
                 match inst {
                     Inst::SB => {
-                        self.store_byte(
+                        match self.store_byte(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             (self.regfile.x[rs2 as usize] as u8) & 0xFFu8,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SH => {
-                        self.store_halfword(
+                        match self.store_halfword(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             (self.regfile.x[rs2 as usize] as u64 as u16) & 0xFFFFu16,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SW => {
-                        self.store_word(
+                        match self.store_word(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u32,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::SD => {
-                        self.store_doubleword(
+                        match self.store_doubleword(
                             self.regfile.x[rs1 as usize].wrapping_add(offset) as u64,
                             self.regfile.x[rs2 as usize] as u64,
-                        );
+                            true,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     _ => panic!(),
                 }
@@ -811,27 +1311,51 @@ impl Core {
             InstType::C => {
                 let rd = inst_wrap.val(11, 7);
                 let rs1 = inst_wrap.val(19, 15);
-                let csr = inst_wrap.val(31, 20);
+                let csr = inst_wrap.val(31, 20) as u16;
 
                 match inst {
                     Inst::CSRRW => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] = self.regfile.x[rs1 as usize] as u64;
+                        match self.write_csr(csr, self.regfile.x[rs1 as usize] as u64) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::CSRRS => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] =
-                            self.csr[csr as usize] | self.regfile.x[rs1 as usize] as u64;
+                        match self.write_csr(
+                            csr,
+                            (self.regfile.x[rd as usize] | self.regfile.x[rs1 as usize]) as u64,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
                     }
                     Inst::CSRRWI => {
+                        let dat = match self.read_csr(csr) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e),
+                        };
                         if rd > 0 {
-                            self.regfile.x[rd as usize] = self.csr[csr as usize] as i64;
+                            self.regfile.x[rd as usize] = dat as i64;
                         }
-                        self.csr[csr as usize] = rs1 as u64;
+                        match self.write_csr(csr, rs1 as u64) {
+                            Ok(()) => {}
+                            Err(e) => return Err(e),
+                        };
+                        // self.csr[csr as usize] = rs1 as u64;
                     }
                     _ => {
                         panic!();
@@ -839,5 +1363,6 @@ impl Core {
                 }
             }
         }
+        Ok(())
     }
 }

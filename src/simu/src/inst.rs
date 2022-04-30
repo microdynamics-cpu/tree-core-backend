@@ -37,11 +37,17 @@ pub enum Inst {
     SRA,
     OR,
     AND,
+    FENCE,
+    ECALL,
+    EBREAK,
     CSRRW,
     CSRRS,
     CSRRWI,
+    URET,
+    SRET,
     MRET,
-    FENCE,
+    SFENCEVMA,
+    
     // RV32M
     MUL,
     MULH,
@@ -128,8 +134,13 @@ pub fn get_inst_name(inst: &Inst) -> &'static str {
         Inst::CSRRS => "CSRRS",
         Inst::CSRRW => "CSRRW",
         Inst::CSRRWI => "CSRRWI",
+        Inst::URET => "URET",
+        Inst::SRET => "SRET",
         Inst::MRET => "MRET",
+        Inst::SFENCEVMA => "SFENCE_VMA",
         Inst::FENCE => "FENCE",
+        Inst::ECALL => "ECALL",
+        Inst::EBREAK => "EBREAK",
         Inst::MUL => "MUL",
         Inst::MULH => "MULH",
         Inst::MULHSU => "MULHSU",
@@ -170,7 +181,10 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::SRA
         | Inst::OR
         | Inst::AND
+        | Inst::URET
+        | Inst::SRET
         | Inst::MRET
+        | Inst::SFENCEVMA
         | Inst::MUL
         | Inst::MULH
         | Inst::MULHSU
@@ -210,7 +224,9 @@ pub fn get_instruction_type(inst: &Inst) -> InstType {
         | Inst::ADDIW 
         | Inst::SLLIW
         | Inst::SRLIW
-        | Inst::SRAIW => InstType::I,
+        | Inst::SRAIW
+        | Inst::ECALL
+        | Inst::EBREAK => InstType::I,
         Inst::SB | Inst::SH | Inst::SW | Inst::SD => InstType::S,
         Inst::BEQ | Inst::BNE | Inst::BLT | Inst::BGE | Inst::BLTU | Inst::BGEU => InstType::B,
         Inst::LUI | Inst::AUIPC => InstType::U,
