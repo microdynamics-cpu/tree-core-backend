@@ -52,11 +52,11 @@ unitTest() {
         $PROGRAM --bin $file --xlen x64 --start-addr 0x1000 --end-inst 0x00000073
     done
 
-    printf "$INFO===RV64I CUSTOM TESTS===$END\n"
+    printf "$INFO===RV64I CPU TESTS===$END\n"
     for file in $CPU_TESTS_BIN; do
         val=`eval "basename $file"`
         # echo $val
-        printf "$INFO[%16s] $END" $val
+        printf "$INFO[%34s] $END" $val
         $PROGRAM --bin $file --xlen x64 --end-inst 0x0000006b
     done
 
