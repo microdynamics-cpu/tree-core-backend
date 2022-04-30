@@ -1,6 +1,8 @@
+use crate::config::XLen;
 use crate::csr;
 use crate::data::Word;
 use crate::decode::Decode;
+use crate::device::{Device, Uart};
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
 use crate::mmu::AddrMode;
 use crate::mmu::MAType;
@@ -8,15 +10,18 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::config::XLen;
 use crate::trace::{inst_trace, regfile_trace};
-use crate::device::Uart;
 
 // const self.start_addr: u64 = 0x1000u64;
-const MEM_CAPACITY: usize = 1024 * 512;
+const MEM_CAPACITY: usize = 1024 * 1024;
 const CSR_CAPACITY: usize = 4096;
 const PERIF_START_ADDR: u64 = 0xa1000000u64;
 const PERIF_ADDR_SIZE: u64 = 0x1000u64;
+const SERIAL_START_OFFSET: u64 = 0x3F8u64;
+// const SERIAL_ADDR_SIZE: u64 = 0x4u64;
+const RTC_START_OFFSET: u64 = 0x48u64;
+const RTC_ADDR_SIZE: u64 = 0x08u64;
+// const KDB_START_OFFSET: u64 = 0x60u64;
 
 pub struct Core {
     regfile: Regfile,
@@ -28,6 +33,7 @@ pub struct Core {
     addr_mode: AddrMode,
     csr: [u64; CSR_CAPACITY],
     mem: [u8; MEM_CAPACITY],
+    dev: Device,
     inst_num: u64,
     xlen: XLen,
     debug: bool,
@@ -45,6 +51,7 @@ impl Core {
             addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
             mem: [0; MEM_CAPACITY],
+            dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
             debug: debug_val,
@@ -149,24 +156,48 @@ impl Core {
         Ok(word)
     }
 
-    fn load_phy_mem(&self, addr: u64) -> u8 {
+    fn mmap_load_oper(&mut self, addr: u64) -> u8 {
+        // println!("addr: {:16x}", addr);
+        // HACK: range addr check
+        if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
+            panic!();
+        } else if addr >= PERIF_START_ADDR + RTC_START_OFFSET
+            && addr <= PERIF_START_ADDR + RTC_START_OFFSET + RTC_ADDR_SIZE
+        {
+            self.dev.rtc.val()
+        } else {
+            panic!();
+        }
+    }
+
+    fn mmap_store_oper(&self, addr: u64, val: u8) {
+        if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
+            Uart::out(val);
+        } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
+            panic!();
+        } else {
+            panic!();
+        }
+    }
+
+    fn load_phy_mem(&mut self, addr: u64) -> u8 {
         // boundery check
         if addr < self.start_addr {
             panic!("[load]mem out of boundery");
         }
 
         if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
-            println!("hello");
-            panic!();
-        }
-        // HACK: need to debug seek for season
-        match self.start_addr {
-            0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
-            _ => self.mem[addr as usize],
+            self.mmap_load_oper(addr) // BUG: bit width!
+        } else {
+            // HACK: need to debug seek for season
+            match self.start_addr {
+                0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
+                _ => self.mem[addr as usize],
+            }
         }
     }
 
-    fn load_byte(&self, addr: u64, trans: bool) -> Result<u8, Exception> {
+    fn load_byte(&mut self, addr: u64, trans: bool) -> Result<u8, Exception> {
         let phy_addr = match trans {
             true => match self.trans_addr(addr, MAType::Read) {
                 Ok(v) => v,
@@ -186,7 +217,7 @@ impl Core {
         }))
     }
 
-    fn load_halfword(&self, addr: u64, trans: bool) -> Result<u16, Exception> {
+    fn load_halfword(&mut self, addr: u64, trans: bool) -> Result<u16, Exception> {
         let mut res = 0u16;
         for i in 0..2 {
             match self.load_byte(addr.wrapping_add(i), trans) {
@@ -197,7 +228,7 @@ impl Core {
         Ok(res)
     }
 
-    fn load_word(&self, addr: u64, trans: bool) -> Result<u32, Exception> {
+    fn load_word(&mut self, addr: u64, trans: bool) -> Result<u32, Exception> {
         let mut res = 0u32;
         for i in 0..2 {
             match self.load_halfword(addr.wrapping_add(i * 2), trans) {
@@ -208,7 +239,7 @@ impl Core {
         Ok(res)
     }
 
-    fn load_doubleword(&self, addr: u64, trans: bool) -> Result<u64, Exception> {
+    fn load_doubleword(&mut self, addr: u64, trans: bool) -> Result<u64, Exception> {
         let mut res = 0u64;
         for i in 0..2 {
             match self.load_word(addr.wrapping_add(i * 4), trans) {
@@ -225,13 +256,13 @@ impl Core {
         }
 
         if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
-            Uart::out(val);
-            return;
-        }
-        // HACK: need to debug seek for season
-        match self.start_addr {
-            0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
-            _ => self.mem[addr as usize] = val,
+            self.mmap_store_oper(addr, val);
+        } else {
+            // HACK: need to debug seek for season
+            match self.start_addr {
+                0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
+                _ => self.mem[addr as usize] = val,
+            }
         }
     }
 
@@ -301,7 +332,7 @@ impl Core {
         Ok(())
     }
 
-    fn trans_addr(&self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
+    fn trans_addr(&mut self, addr: u64, ma_type: MAType) -> Result<u64, ()> {
         match self.addr_mode {
             AddrMode::None => Ok(addr),
             AddrMode::SV32 => match self.priv_mode {
@@ -327,7 +358,7 @@ impl Core {
     }
 
     fn trav_page(
-        &self,
+        &mut self,
         virt_addr: u64,
         level: u8,
         parent_ppn: u64,
