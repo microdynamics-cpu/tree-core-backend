@@ -14,7 +14,10 @@ impl Uart {
 
     pub fn out(dat: u8) {
         print!("{}", dat as char);
-        stdout().flush();
+        match stdout().flush() {
+            Ok(()) => {}
+            Err(_e) => panic!(),
+        }
     }
 }
 
@@ -53,13 +56,11 @@ impl Rtc {
 }
 
 pub struct Keyboard {
-    code: u8, // default: 0
     press: bool,
+    code: u8,
 }
 
-impl Keyboard {
-
-}
+impl Keyboard {}
 
 pub struct Device {
     pub rtc: Rtc,
