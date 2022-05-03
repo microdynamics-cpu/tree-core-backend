@@ -56,18 +56,39 @@ impl Rtc {
 }
 
 pub struct Keyboard {
-    press: bool,
+    press: u8,
     code: u8,
 }
 
-impl Keyboard {}
+impl Keyboard {
+    pub fn new() -> Self {
+        Keyboard {
+            press: 0u8,
+            code: 0u8,
+        }
+    }
+
+    pub fn val(&self, offset: bool) -> u8 {
+        if !offset {
+            self.press
+        } else {
+            self.code
+        }
+    }
+
+    pub fn det(&mut self, press: u8, code: u8) {
+        self.press = press;
+        self.code = code;
+    }
+}
 
 pub struct Device {
     pub rtc: Rtc,
+    pub kdb: Keyboard,
 }
 
 impl Device {
     pub fn new() -> Self {
-        Device { rtc: Rtc::new() }
+        Device { rtc: Rtc::new(), kdb: Keyboard::new(), }
     }
 }

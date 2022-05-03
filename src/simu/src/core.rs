@@ -169,7 +169,13 @@ impl Core {
         } else if addr >= PERIF_START_ADDR + KDB_START_OFFSET
             && addr < PERIF_START_ADDR + KDB_START_OFFSET + KDB_ADDR_SIZE
         {
-            1u8
+            if addr == PERIF_START_ADDR + KDB_START_OFFSET {
+                self.dev.kdb.val(false)
+            } else if addr == PERIF_START_ADDR + KDB_START_OFFSET + KDB_ADDR_SIZE - 1u64 {
+                self.dev.kdb.val(true)
+            } else {
+                panic!("[kdb] error addr space")
+            }
         } else {
             panic!();
         }
