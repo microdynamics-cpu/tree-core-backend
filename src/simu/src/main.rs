@@ -13,9 +13,9 @@ struct Args {
     #[clap(short, long, default_value = "none")]
     bin: String,
 
-    /// Output the trace info
-    #[clap(short, long)]
-    debug: bool,
+    /// Debug level[err, warn, trace, none]
+    #[clap(short, long, default_value = "none")]
+    debug: String,
 
     /// Bit width of the processor
     #[clap(short, long, default_value = "x64")]

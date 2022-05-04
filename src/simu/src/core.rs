@@ -37,11 +37,11 @@ pub struct Core {
     dev: Device,
     inst_num: u64,
     xlen: XLen,
-    debug: bool,
+    debug: String,
 }
 
 impl Core {
-    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
+    pub fn new(debug_level: String, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -55,7 +55,7 @@ impl Core {
             dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
-            debug: debug_val,
+            debug: debug_level,
         }
     }
 
@@ -103,8 +103,10 @@ impl Core {
             Err(e) => return Err(e),
         };
         let inst = Decode::decode(self.pc, word, &self.xlen);
-        if self.debug {
-            inst_trace(self.pc, word, &inst);
+        match self.debug.as_str() {
+            "trace" => inst_trace(self.pc, word, &inst),
+            "err" => regfile_trace(&self.regfile, "a0"), // HACK:
+            _ => {}
         }
         self.exec(word, inst)
     }
