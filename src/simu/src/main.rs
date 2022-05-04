@@ -1,30 +1,16 @@
 use clap::Parser;
 use std::fs::File;
-// use std::io::prelude::*;
-use std::io::{Read, Write};
+use std::io::Read;
 use treecore_simu::core::{Core};
 use treecore_simu::config::XLen;
-use treecore_simu::shell::{Shell, ShellIO};
-
-fn interactive_mode() {
-    println!("TreeCore RISCV ISA Simulator 0.0.1");
-    println!("[last-release] on Ubuntu 20.04 LTS");
-    println!("Type 'help' for more information.");
-    let mut shell = Shell::new(());
-    shell.new_command_noargs("hello", "Say 'hello' to the world", |io, _| {
-        writeln!(io, "Hello World !!!")?;
-        Ok(())
-    });
-
-    shell.run_loop(&mut ShellIO::default());
-}
+use treecore_simu::cli::cli_mode;
 
 /// RISCV ISA Simulator Component
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Name of the bin file to simulate
-    #[clap(short, long)]
+    /// Path of the bin file to simulate
+    #[clap(short, long, default_value = "none")]
     bin: String,
 
     /// Output the trace info
@@ -32,7 +18,7 @@ struct Args {
     debug: bool,
 
     /// Bit width of the processor
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "x64")]
     xlen: String,
 
     /// Start addr of the processor
@@ -40,14 +26,14 @@ struct Args {
     start_addr: String,
 
     /// End inst
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "0x0000006b")]
     end_inst: String,
 
     /// Interactive mode
     #[clap(short, long)]
     inter: bool,
 
-    /// rpc request(http) for simulating keyboard and gpu in server mode
+    /// RPC request(http) for simulating keyboard and gpu in server mode
     #[clap(short, long)]
     rpc: bool,
 }
@@ -55,7 +41,7 @@ struct Args {
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
     if args.inter {
-        interactive_mode();
+        cli_mode();
         return Ok(());
     }
 
