@@ -46,6 +46,10 @@ struct Args {
     /// Interactive mode
     #[clap(short, long)]
     inter: bool,
+
+    /// rpc request(http) for simulating keyboard and gpu in server mode
+    #[clap(short, long)]
+    rpc: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -74,6 +78,13 @@ fn main() -> std::io::Result<()> {
             Err(_e) => panic!("need to set the right format!, the right format: 0xXXXX"),
         },
     );
-    core.run_simu(contents);
+
+    // NOTE: launch cmd and server simulator simultaneously can lead to stack overflow bug
+    if args.rpc {
+        core.run_simu(contents);
+    } else {
+        core.run_simu(contents);
+    }
+
     Ok(())
 }
