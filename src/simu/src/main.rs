@@ -1,9 +1,12 @@
 use clap::Parser;
 use std::fs::File;
 use std::io::Read;
-use treecore_simu::core::{Core};
-use treecore_simu::config::XLen;
+use std::sync::mpsc;
+use std::thread;
 use treecore_simu::cli::cli_mode;
+use treecore_simu::config::XLen;
+use treecore_simu::core::Core;
+use treecore_simu::web::web_init;
 
 /// RISCV ISA Simulator Component
 #[derive(Parser, Debug)]
@@ -33,9 +36,9 @@ struct Args {
     #[clap(short, long)]
     inter: bool,
 
-    /// RPC request(http) for simulating keyboard and gpu in server mode
+    /// Web server(http) for simulating keyboard and gpu online
     #[clap(short, long)]
-    rpc: bool,
+    web: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -66,8 +69,22 @@ fn main() -> std::io::Result<()> {
     );
 
     // NOTE: launch cmd and server simulator simultaneously can lead to stack overflow bug
-    if args.rpc {
-        core.run_simu(contents);
+    if args.web {
+        println!("web");
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            web_init(tx);
+        });
+
+        loop {
+            match rx.try_recv() {
+                Ok(v) => {
+                    println!("Got: {}", v)
+                }
+                Err(_e) => {}
+            }
+        }
     } else {
         core.run_simu(contents);
     }
