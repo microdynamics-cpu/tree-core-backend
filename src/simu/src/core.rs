@@ -10,7 +10,8 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{inst_trace, regfile_trace};
+use crate::trace::{itrace, regfile_trace};
+use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
 const MEM_CAPACITY: usize = 1024 * 1024;
@@ -59,14 +60,40 @@ impl Core {
         }
     }
 
-    pub fn run_simu(&mut self, data: Vec<u8>) {
+    pub fn load_bin_file(&mut self, data: Vec<u8>) {
         for i in 0..data.len() {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
 
         self.pc = self.start_addr;
+    }
+
+    pub fn check_bound(&self, val: u8) -> u8 {
+        if val >= 80 {
+            80u8
+        } else {
+            val
+        }
+    }
+
+    pub fn run_simu(&mut self, rx: Option<mpsc::Receiver<(u8, u8)>>) {
         loop {
+            match rx {
+                Some(ref v) => {
+                    match v.try_recv() {
+                        Ok(mut vv) => {
+                            // println!("Got: {:?}", v)
+                            // HACK: trim because not support all key detect
+                            vv.0 = self.check_bound(vv.0);
+                            vv.1 = self.check_bound(vv.1);
+                            self.dev.kdb.det(vv.0, vv.1);
+                        }
+                        Err(_e) => {}
+                    }
+                }
+                None => {}
+            }
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc, true) {
                 Ok(w) => w == self.end_inst,
@@ -104,7 +131,7 @@ impl Core {
         };
         let inst = Decode::decode(self.pc, word, &self.xlen);
         match self.debug.as_str() {
-            "trace" => inst_trace(self.pc, word, &inst),
+            "trace" => itrace(self.pc, word, &inst),
             "err" => regfile_trace(&self.regfile, "a0"), // HACK:
             _ => {}
         }

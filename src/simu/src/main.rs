@@ -48,9 +48,6 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    let mut file = File::open(args.bin)?;
-    let mut contents = vec![];
-    file.read_to_end(&mut contents)?;
     let mut core = Core::new(
         args.debug,
         match args.xlen.as_str() {
@@ -68,25 +65,22 @@ fn main() -> std::io::Result<()> {
         },
     );
 
+    let mut file = File::open(args.bin)?;
+    let mut contents = vec![];
+    file.read_to_end(&mut contents)?;
+    core.load_bin_file(contents);
+
     // NOTE: launch cmd and server simulator simultaneously can lead to stack overflow bug
     if args.web {
-        println!("web");
+        // println!("web");
         let (tx, rx) = mpsc::channel();
 
         thread::spawn(move || {
             web_init(tx);
         });
-
-        loop {
-            match rx.try_recv() {
-                Ok(v) => {
-                    println!("Got: {}", v)
-                }
-                Err(_e) => {}
-            }
-        }
+        core.run_simu(Some(rx));
     } else {
-        core.run_simu(contents);
+        core.run_simu(None);
     }
 
     Ok(())
