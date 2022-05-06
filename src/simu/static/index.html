@@ -27,7 +27,9 @@
 <body>
     <h1> Keyboard Test</h1>
     <div id="det">pres keyboard</div>
+    <canvas id="vga"></canvas>
     <!-- <script src="main.js"></script> -->
+    <script src="https://pixijs.download/release/pixi.js"></script>
     <script>
         document.onkeydown = function (even) {
             // console.log('press');
@@ -56,6 +58,54 @@
             };
             xhr.send(JSON.stringify(obj));
         }
+
+        // function vga() {
+        //     const vga = document.getElementById('vga');
+        //     vga.width = window.innerWidth;
+        //     vga.height = window.innerHeight;
+        //     const gl = vga.getContext('webgl2');
+        //     if (!gl) {
+        //         return;
+        //     }
+        //     gl.clearColor(1, 0, 0, 1);
+        //     gl.clear(gl.COLOR_BUFFER_BIT);
+        // }
+
+        // vga();
+        const vga_screen_width = 400;
+        const vga_screen_height = 300;
+        let app = new PIXI.Application({ width: vga_screen_width, height: vga_screen_height }, { antialias: true });
+        document.body.appendChild(app.view);
+        let graphics = new PIXI.Graphics();
+        app.stage.addChild(graphics);
+
+        function render(color) {
+            for (let i = 0; i < vga_screen_width; ++i) {
+                for (let j = 0; j < vga_screen_height; ++j) {
+                    graphics.beginFill(color);
+                    graphics.drawRect(i, j, 1, 1);
+                }
+            }
+            graphics.endFill();
+        }
+
+        let col = [0xDE3249, 0xFF0000, 0x00FF00, 0x0000FF];
+        let idx = 0;
+
+        for (let i = 0; i < 10; ++i) {
+            setTimeout({}, 2000);
+            console.log(i);
+            // setTimeout(function () {
+            //     if (idx == 4) idx = 0;
+            //     // render(col[idx]);
+            //     ++idx;
+            //     console.log(idx);
+            // }, 2000);
+        }
+
+
+        // render(col[idx+1]);
+
     </script>
 </body>
 
