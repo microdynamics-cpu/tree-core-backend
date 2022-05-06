@@ -23,7 +23,7 @@ impl ThreadPool {
     /// # Panics
     ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize, tx: std::sync::mpsc::Sender<u8>) -> ThreadPool {
+    pub fn new(size: usize, tx: std::sync::mpsc::Sender<(u8, u8)>) -> ThreadPool {
         assert!(size > 0);
 
         let (sender, receiver) = mpsc::channel();
@@ -73,17 +73,19 @@ struct Worker {
 // --snip--
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>, tx: std::sync::mpsc::Sender<u8>) -> Worker {
+    fn new(
+        id: usize,
+        receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
+        tx: std::sync::mpsc::Sender<(u8, u8)>,
+    ) -> Worker {
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
 
             match message {
                 Message::NewJob(job) => {
-                    println!("Worker {} got a job; executing.", id);
-
-                    let (pres, code) = job();
-                    tx.send(pres).unwrap();
-                    tx.send(code).unwrap();
+                    // println!("Worker {} got a job; executing.", id);
+                    let res = job();
+                    tx.send(res).unwrap();
                 }
                 Message::Terminate => {
                     println!("Worker {} was told to terminate.", id);

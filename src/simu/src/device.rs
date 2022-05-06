@@ -79,6 +79,7 @@ impl Keyboard {
     pub fn det(&mut self, press: u8, code: u8) {
         self.press = press;
         self.code = code;
+        // println!("[det]: pre: {}, code: {}", self.press, self.code);
     }
 }
 
@@ -89,6 +90,9 @@ pub struct Device {
 
 impl Device {
     pub fn new() -> Self {
-        Device { rtc: Rtc::new(), kdb: Keyboard::new(), }
+        Device {
+            rtc: Rtc::new(),
+            kdb: Keyboard::new(),
+        }
     }
 }
