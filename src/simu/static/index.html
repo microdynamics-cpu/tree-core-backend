@@ -27,10 +27,25 @@
 <body>
     <h1> Keyboard Test</h1>
     <div id="det">pres keyboard</div>
+    <button id="btn" onclick="handle_btn()">send vga get response</button>
     <canvas id="vga"></canvas>
     <!-- <script src="main.js"></script> -->
     <script src="https://pixijs.download/release/pixi.js"></script>
     <script>
+
+        function handle_btn() {
+            console.log("click btn!!!");
+            let xhr = new XMLHttpRequest();
+            xhr.open('GET', '/vga', true);
+            xhr.send(null);
+            xhr.onreadystatechange = function () {
+                // HACK: check other state?
+                if (xhr.readyState == 4) {
+                    console.log(xhr.responseText);
+                }
+            }
+        }
+
         document.onkeydown = function (even) {
             // console.log('press');
             let jpCode = even.keyCode;
@@ -59,30 +74,20 @@
             xhr.send(JSON.stringify(obj));
         }
 
-        // function vga() {
-        //     const vga = document.getElementById('vga');
-        //     vga.width = window.innerWidth;
-        //     vga.height = window.innerHeight;
-        //     const gl = vga.getContext('webgl2');
-        //     if (!gl) {
-        //         return;
-        //     }
-        //     gl.clearColor(1, 0, 0, 1);
-        //     gl.clear(gl.COLOR_BUFFER_BIT);
-        // }
 
-        // vga();
-        const vga_screen_width = 400;
-        const vga_screen_height = 300;
+        const vga_screen_width = 192;
+        const vga_screen_height = 128;
         let app = new PIXI.Application({ width: vga_screen_width, height: vga_screen_height }, { antialias: true });
         document.body.appendChild(app.view);
         let graphics = new PIXI.Graphics();
         app.stage.addChild(graphics);
 
         function render(color) {
+            graphics.clear();
             for (let i = 0; i < vga_screen_width; ++i) {
                 for (let j = 0; j < vga_screen_height; ++j) {
-                    graphics.beginFill(color);
+                    let val = Math.floor(Math.random() * 0xFFFFFF);
+                    graphics.beginFill(val);
                     graphics.drawRect(i, j, 1, 1);
                 }
             }
@@ -92,20 +97,38 @@
         let col = [0xDE3249, 0xFF0000, 0x00FF00, 0x0000FF];
         let idx = 0;
 
-        for (let i = 0; i < 10; ++i) {
-            setTimeout({}, 2000);
-            console.log(i);
-            // setTimeout(function () {
-            //     if (idx == 4) idx = 0;
-            //     // render(col[idx]);
-            //     ++idx;
-            //     console.log(idx);
-            // }, 2000);
+        // Returns a Promise that resolves after "ms" Milliseconds
+        const timer = ms => new Promise(res => setTimeout(res, ms))
+        async function updateVGA() {
+            while(1) {
+                console.log('vga');
+                let xhr = new XMLHttpRequest();
+                xhr.open('GET', 'vga', true);
+                await timer(500);
+            }
         }
 
+        async function demo() {
+            while (1) {
+                // for (let i = 0; i < 10; ++i) {
+                    let startTime = performance.now()
+                    // console.log(idx);
+                    render(col[(++idx) % 4]);                    
+                    await timer(500); // then the created Promise can be awaited
+                    let endTime = performance.now()
+                    console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
+                // }
+            }
 
-        // render(col[idx+1]);
+        }
 
+        let startTime = performance.now()
+        render(col[3]);
+        let endTime = performance.now()
+        console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
+
+        // demo();
+        updateVGA();
     </script>
 </body>
 

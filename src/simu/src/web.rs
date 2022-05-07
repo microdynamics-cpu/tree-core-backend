@@ -52,20 +52,17 @@ fn handle_connection(mut stream: TcpStream) -> (u8, u8) {
 
     let req_get_idx = b"GET / HTTP/1.1\r\n";
     let req_get_sleep = b"GET /sleep HTTP/1.1\r\n";
+    let req_get_vga = b"GET /vga HTTP/1.1\r\n";
     let req_post_val = b"POST /value HTTP/1.1\r\n";
 
     let (status_line, filename) = if buffer.starts_with(req_get_idx) {
         ("HTTP/1.1 200 OK", "static/index.html")
     } else if buffer.starts_with(req_get_sleep) {
         thread::sleep(Duration::from_secs(5));
-        ("HTTP/1.1 200 OK", "static/index.html")
+        ("HTTP/1.1 404 NOT FOUND", "static/404.html")
+    } else if buffer.starts_with(req_get_vga) {
+        ("HTTP/1.1 404 NOT FOUND", "static/404.html")
     } else if buffer.starts_with(req_post_val) {
-        // println!("==========================");
-        // for v in buffer.iter() {
-        //     print!("{}", *v as char);
-        // }
-        // println!("++++++++++++++++++++++++++");
-
         let press_val = match find_subsequence(&buffer, b"press") {
             Some(v) => get_val(&buffer, v + 7),
             None => 0u8,
