@@ -24,6 +24,11 @@ const RTC_START_OFFSET: u64 = 0x48u64;
 const RTC_ADDR_SIZE: u64 = 0x08u64; // HACK: addr is surplus?
 const KDB_START_OFFSET: u64 = 0x60u64;
 const KDB_ADDR_SIZE: u64 = 0x02u64; // only device -> core
+const VGA_VGACTL_START_OFFSET: u64 = 0x100u64;
+const VGA_SYNC_START_OFFSET: u64 = VGA_VGACTL_START_OFFSET + 4u64;
+const VGA_SYNC_ADDR_SIZE: u64 = 0x4u64;
+const VGA_FRAME_BUF_ADDR_START: u64 = 0xa0000000u64;
+const VGA_FRAME_BUF_ADDR_SIZE: u64 = 0x200000u64;
 
 pub struct Core {
     regfile: Regfile,
@@ -210,11 +215,20 @@ impl Core {
         }
     }
 
-    fn mmap_store_oper(&self, addr: u64, val: u8) {
+    fn mmap_store_oper(&mut self, addr: u64, val: u8) {
+        // println!("addr: {:16x}", addr);
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
             Uart::out(val);
         } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
             panic!();
+        } else if addr >= VGA_FRAME_BUF_ADDR_START
+            && addr <= VGA_FRAME_BUF_ADDR_START + VGA_FRAME_BUF_ADDR_SIZE
+        {
+            self.dev.vga.store(addr, val);
+        } else if addr >= PERIF_START_ADDR + VGA_SYNC_START_OFFSET
+            && addr <= PERIF_START_ADDR + VGA_SYNC_START_OFFSET + VGA_SYNC_ADDR_SIZE
+        {
+            self.dev.vga.sync(val);
         } else {
             panic!();
         }
@@ -295,7 +309,10 @@ impl Core {
             panic!("[store]mem out of boundery");
         }
 
-        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+        if (addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE)
+            || (addr >= VGA_FRAME_BUF_ADDR_START
+                && addr <= VGA_FRAME_BUF_ADDR_START + VGA_FRAME_BUF_ADDR_SIZE)
+        {
             self.mmap_store_oper(addr, val);
         } else {
             // HACK: need to debug seek for season

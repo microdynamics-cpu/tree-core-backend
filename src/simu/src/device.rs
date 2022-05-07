@@ -83,9 +83,49 @@ impl Keyboard {
     }
 }
 
+const VGA_BUF_SIZE: usize = 200 * 180 * 4;
+
+pub struct Vga {
+    width: u16,
+    height: u16,
+    sync: bool,
+    cnt: u8,
+    buf: [u8; VGA_BUF_SIZE],
+}
+
+impl Vga {
+    pub fn new() -> Self {
+        Vga {
+            width: 192,
+            height: 128,
+            sync: false,
+            cnt: 0,
+            buf: [0; VGA_BUF_SIZE],
+        }
+    }
+
+    pub fn val(&self, addr: u64) -> u8 {
+        self.buf[(addr-0xa0000000u64) as usize]
+    }
+
+    pub fn store(&mut self, addr: u64, val: u8) {
+        self.buf[(addr-0xa0000000u64) as usize] = val;
+    }
+
+    pub fn sync(&mut self, val: u8) {
+        if self.cnt == 0 {
+            self.sync = val == 1u8;
+        }
+
+        self.cnt += 1;
+        if self.cnt == 4 {self.cnt = 0}
+    }
+}
+
 pub struct Device {
     pub rtc: Rtc,
     pub kdb: Keyboard,
+    pub vga: Vga,
 }
 
 impl Device {
@@ -93,6 +133,7 @@ impl Device {
         Device {
             rtc: Rtc::new(),
             kdb: Keyboard::new(),
+            vga: Vga::new(),
         }
     }
 }
