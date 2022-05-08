@@ -6,7 +6,8 @@ use std::thread;
 use treecore_simu::cli::cli_mode;
 use treecore_simu::config::XLen;
 use treecore_simu::core::Core;
-use treecore_simu::web::web_init;
+use treecore_simu::web::web_setup;
+use treecore_simu::ws::ws_setup;
 
 /// RISCV ISA Simulator Component
 #[derive(Parser, Debug)]
@@ -70,15 +71,17 @@ fn main() -> std::io::Result<()> {
     file.read_to_end(&mut contents)?;
     core.load_bin_file(contents);
 
-    // NOTE: launch cmd and server simulator simultaneously can lead to stack overflow bug
     if args.web {
         // println!("web");
-        let (tx, rx) = mpsc::channel();
+        let (kdb_tx, kdb_rx) = mpsc::channel();
+        thread::spawn(move || {
+            web_setup(kdb_tx);
+        });
 
         thread::spawn(move || {
-            web_init(tx);
+            ws_setup();
         });
-        core.run_simu(Some(rx));
+        core.run_simu(Some(kdb_rx));
     } else {
         core.run_simu(None);
     }

@@ -14,3 +14,4 @@ pub mod config;
 pub mod cli;
 pub mod thrp;
 pub mod web;
+pub mod ws;

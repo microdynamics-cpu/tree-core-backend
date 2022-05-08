@@ -6,14 +6,14 @@ use std::net::TcpStream;
 use std::thread;
 use std::time::Duration;
 
-pub fn web_init(tx: std::sync::mpsc::Sender<(u8, u8)>) {
+pub fn web_setup(kdb_tx: std::sync::mpsc::Sender<(u8, u8)>) {
     let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
 
-    let pool = ThreadPool::new(4, tx);
+    let pool = ThreadPool::new(4, kdb_tx);
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        // tx.send(String::from("p: 0")).unwrap();
-        // tx.send(String::from("c: 128")).unwrap();
+        // kdb_tx.send(String::from("p: 0")).unwrap();
+        // kdb_tx.send(String::from("c: 128")).unwrap();
         pool.execute(|| {
             // send message!
             handle_connection(stream)
@@ -94,11 +94,4 @@ fn handle_connection(mut stream: TcpStream) -> (u8, u8) {
     stream.flush().unwrap();
 
     (press_res, code_res)
-
-    // if (press_res, code_res) == (0u8, 0u8) {
-    //     None
-    // } else {
-    //     Some((press_res, code_res))
-    // }
-    // println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
 }

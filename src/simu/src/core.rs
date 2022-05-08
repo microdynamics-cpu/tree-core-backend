@@ -82,9 +82,9 @@ impl Core {
         }
     }
 
-    pub fn run_simu(&mut self, rx: Option<mpsc::Receiver<(u8, u8)>>) {
+    pub fn run_simu(&mut self, kdb_rx: Option<mpsc::Receiver<(u8, u8)>>) {
         loop {
-            match rx {
+            match kdb_rx {
                 Some(ref v) => {
                     match v.try_recv() {
                         Ok(mut vv) => {
@@ -224,11 +224,12 @@ impl Core {
         } else if addr >= VGA_FRAME_BUF_ADDR_START
             && addr <= VGA_FRAME_BUF_ADDR_START + VGA_FRAME_BUF_ADDR_SIZE
         {
+            //NOTE: need to guard data transfer by use sync flag
             self.dev.vga.store(addr, val);
         } else if addr >= PERIF_START_ADDR + VGA_SYNC_START_OFFSET
             && addr <= PERIF_START_ADDR + VGA_SYNC_START_OFFSET + VGA_SYNC_ADDR_SIZE
         {
-            self.dev.vga.sync(val);
+            self.dev.vga.set_sync(val);
         } else {
             panic!();
         }

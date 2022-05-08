@@ -6,7 +6,7 @@ use tungstenite::{
     Message,
 };
 
-pub fn ws_init() {
+pub fn ws_setup() {
     let server = TcpListener::bind("127.0.0.1:8383").unwrap();
     for stream in server.incoming() {
         spawn(move || {

@@ -105,20 +105,28 @@ impl Vga {
     }
 
     pub fn val(&self, addr: u64) -> u8 {
-        self.buf[(addr-0xa0000000u64) as usize]
+        self.buf[(addr - 0xa0000000u64) as usize]
     }
 
     pub fn store(&mut self, addr: u64, val: u8) {
-        self.buf[(addr-0xa0000000u64) as usize] = val;
+        self.buf[(addr - 0xa0000000u64) as usize] = val;
     }
 
-    pub fn sync(&mut self, val: u8) {
+    pub fn set_sync(&mut self, val: u8) {
         if self.cnt == 0 {
             self.sync = val == 1u8;
+            println!("self.sync: {}", self.sync);
+            if self.sync {
+                // TODO: send data here
+                // [0, self.width * self.height - 1];
+                self.sync = false;
+            }
         }
 
         self.cnt += 1;
-        if self.cnt == 4 {self.cnt = 0}
+        if self.cnt == 4 {
+            self.cnt = 0
+        }
     }
 }
 
