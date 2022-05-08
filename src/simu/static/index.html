@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Keyboard Test</title>
+    <title>Multimedia Device Test</title>
     <style>
         * {
             padding: 0;
@@ -27,8 +27,7 @@
 <body>
     <h1> Keyboard Test</h1>
     <div id="det">pres keyboard</div>
-    <h1>WebSocket Client Test</h1>
-    <button id="btn" onclick="handle_btn()">send vga get response</button>
+    <h1>VGA Test</h1>
     <canvas id="vga"></canvas>
     <div id="log"></div>
     <!-- <script src="main.js"></script> -->
@@ -70,11 +69,19 @@
         let graphics = new PIXI.Graphics();
         app.stage.addChild(graphics);
 
-        function render(color) {
+        function render(color_dat) {
             graphics.clear();
+            let res = [];
+            console.log(color_dat.length);
+            for (let i = 0; i < color_dat.length; ++i) {
+                res.push(color_dat.charCodeAt(i));
+            }
+
+            res = Uint8Array.from(res);
+            // console.log('res: ', res);
             for (let i = 0; i < vga_screen_width; ++i) {
                 for (let j = 0; j < vga_screen_height; ++j) {
-                    let val = Math.floor(Math.random() * 0xFFFFFF);
+                    let val = res[j * vga_screen_width + i];
                     graphics.beginFill(val);
                     graphics.drawRect(i, j, 1, 1);
                 }
@@ -87,36 +94,26 @@
 
         // Returns a Promise that resolves after "ms" Milliseconds
         const timer = ms => new Promise(res => setTimeout(res, ms))
-        async function updateVGA() {
-            while (1) {
-                console.log('vga');
-                let xhr = new XMLHttpRequest();
-                xhr.open('GET', 'vga', true);
-                await timer(500);
-            }
-        }
+        // async function demo() {
+        //     while (1) {
+        //         // for (let i = 0; i < 10; ++i) {
+        //         let startTime = performance.now()
+        //         // console.log(idx);
+        //         render(col[(++idx) % 4]);
+        //         await timer(500); // then the created Promise can be awaited
+        //         let endTime = performance.now()
+        //         console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
+        //         // }
+        //     }
 
-        async function demo() {
-            while (1) {
-                // for (let i = 0; i < 10; ++i) {
-                let startTime = performance.now()
-                // console.log(idx);
-                render(col[(++idx) % 4]);
-                await timer(500); // then the created Promise can be awaited
-                let endTime = performance.now()
-                console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
-                // }
-            }
+        // }
 
-        }
-
-        let startTime = performance.now()
-        render(col[3]);
-        let endTime = performance.now()
-        console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
+        // let startTime = performance.now()
+        // render(col[3]);
+        // let endTime = performance.now()
+        // console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
 
         // demo();
-        // updateVGA();
 
         let wsUri = "ws://127.0.0.1:8383";
         console.log(wsUri);
@@ -142,7 +139,11 @@
         }
 
         function onMessage(evt) {
-            writeLog('[MSG]: ' + evt.data);
+            writeLog('[MSG]: data received!');
+            // console.log(typeof evt.data);
+            render(evt.data);
+            // TODO: call render func
+            // writeLog('[MSG]: ' + evt.data);
             // websocket.close();
         }
 

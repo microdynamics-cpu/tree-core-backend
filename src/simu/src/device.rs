@@ -88,7 +88,7 @@ const VGA_BUF_SIZE: usize = 200 * 180 * 4;
 pub struct Vga {
     width: u16,
     height: u16,
-    sync: bool,
+    pub sync: bool,
     cnt: u8,
     buf: [u8; VGA_BUF_SIZE],
 }
@@ -112,21 +112,34 @@ impl Vga {
         self.buf[(addr - 0xa0000000u64) as usize] = val;
     }
 
-    pub fn set_sync(&mut self, val: u8) {
+    pub fn set_sync(&mut self, val: u8) -> bool {
         if self.cnt == 0 {
             self.sync = val == 1u8;
             println!("self.sync: {}", self.sync);
-            if self.sync {
-                // TODO: send data here
-                // [0, self.width * self.height - 1];
-                self.sync = false;
-            }
         }
 
         self.cnt += 1;
         if self.cnt == 4 {
-            self.cnt = 0
+            self.cnt = 0;
         }
+        self.sync
+    }
+
+    pub fn send_dat(&mut self) -> String {
+        // TODO: send data here
+        // [0, self.width * self.height - 1];
+        // HACK: PERF
+        let mut res = "".to_string();
+        let mut cnt = 0;
+        for v in self.buf.iter() {
+            if cnt == self.width * self.height {
+                break;
+            }
+            res.push(*v as char);
+            cnt += 1;
+        }
+        self.sync = false;
+        res
     }
 }
 
