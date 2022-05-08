@@ -28,7 +28,9 @@
     <h1> Keyboard Test</h1>
     <div id="det">pres keyboard</div>
     <button id="btn" onclick="handle_btn()">send vga get response</button>
+    <h1>WebSocket Client Test</h1>
     <canvas id="vga"></canvas>
+    <div id="log"></div>
     <!-- <script src="main.js"></script> -->
     <script src="https://pixijs.download/release/pixi.js"></script>
     <script>
@@ -100,7 +102,7 @@
         // Returns a Promise that resolves after "ms" Milliseconds
         const timer = ms => new Promise(res => setTimeout(res, ms))
         async function updateVGA() {
-            while(1) {
+            while (1) {
                 console.log('vga');
                 let xhr = new XMLHttpRequest();
                 xhr.open('GET', 'vga', true);
@@ -111,12 +113,12 @@
         async function demo() {
             while (1) {
                 // for (let i = 0; i < 10; ++i) {
-                    let startTime = performance.now()
-                    // console.log(idx);
-                    render(col[(++idx) % 4]);                    
-                    await timer(500); // then the created Promise can be awaited
-                    let endTime = performance.now()
-                    console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
+                let startTime = performance.now()
+                // console.log(idx);
+                render(col[(++idx) % 4]);
+                await timer(500); // then the created Promise can be awaited
+                let endTime = performance.now()
+                console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
                 // }
             }
 
@@ -128,7 +130,55 @@
         console.log(`Call to doSomething took ${endTime - startTime} milliseconds`)
 
         // demo();
-        updateVGA();
+        // updateVGA();
+
+        let wsUri = "ws://127.0.0.1:8383";
+        console.log(wsUri);
+        let log;
+
+        function init() {
+            log = document.getElementById("log");
+            testWebSocket();
+        }
+
+        function testWebSocket() {
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) { onOpen(evt) };
+            websocket.onclose = function (evt) { onClose(evt) };
+            websocket.onmessage = function (evt) { onMessage(evt) };
+            websocket.onerror = function (evt) { onError(evt) };
+        }
+
+        function onOpen(evt) {
+            writeLog("CONNECTED");
+            sendMessage("Hello world");
+        }
+
+        function onClose(evt) {
+            writeLog("Websocket DISCONNECTED");
+        }
+
+        function onMessage(evt) {
+            writeLog('<span style="color: blue;">RESPONSE: ' + evt.data + '</span>');
+            // websocket.close();
+        }
+
+        function onError(evt) {
+            writeLog('<span style="color: red;">ERROR:</span> ' + evt.data);
+        }
+
+        function sendMessage(message) {
+            writeLog("SENT: " + message);
+            websocket.send(message);
+        }
+
+        function writeLog(message) {
+            let pre = document.createElement("p");
+            pre.innerHTML = message;
+            log.appendChild(pre);
+        }
+
+        window.addEventListener("load", init, false);
     </script>
 </body>
 

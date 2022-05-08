@@ -11,8 +11,10 @@
 
 <script language="javascript" type="text/javascript">
 
-    var wsUri = "wss://ws.postman-echo.com/raw";
-    var log;
+    // let wsUri = "wss://ws.postman-echo.com/raw";
+    let wsUri = "ws://127.0.0.1:8383";
+    console.log(wsUri);
+    let log;
 
     function init() {
         log = document.getElementById("log");
@@ -38,7 +40,7 @@
 
     function onMessage(evt) {
         writeLog('<span style="color: blue;">RESPONSE: ' + evt.data + '</span>');
-        websocket.close();
+        // websocket.close();
     }
 
     function onError(evt) {
@@ -51,7 +53,7 @@
     }
 
     function writeLog(message) {
-        var pre = document.createElement("p");
+        let pre = document.createElement("p");
         pre.innerHTML = message;
         log.appendChild(pre);
     }
