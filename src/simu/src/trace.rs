@@ -30,3 +30,15 @@ pub fn mtrace() {}
 pub fn dtrace() {}
 
 pub fn etrace() {}
+
+macro_rules! log {
+    ($($args: expr),*) => {
+        print!("[{}] line: {}", file!(), line!());
+        $(
+            print!(" {}: {:016x}", stringify!($args), $args);
+        )*
+        println!(""); // to get a new line at the end
+    }
+}
+
+pub(crate) use log;

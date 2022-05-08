@@ -10,7 +10,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, rtrace};
+use crate::trace::{itrace, rtrace, log};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -119,6 +119,7 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
+            // log!(self.pc);
             if self.dev.vga.sync {
                 match vga_tx {
                     Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
