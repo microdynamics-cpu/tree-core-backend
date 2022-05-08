@@ -10,7 +10,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, regfile_trace};
+use crate::trace::{itrace, rtrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -133,10 +133,10 @@ impl Core {
             Ok(()) => {}
             Err(e) => self.handle_trap(e),
         };
-        // regfile_trace(&self.regfile, "ra");
-        // regfile_trace(&self.regfile, "sp");
-        // regfile_trace(&self.regfile, "a4");
-        // regfile_trace(&self.regfile, "t2");
+        // rtrace(&self.regfile, "ra");
+        // rtrace(&self.regfile, "sp");
+        // rtrace(&self.regfile, "a4");
+        // rtrace(&self.regfile, "t2");
     }
 
     fn tick_wrap(&mut self) -> Result<(), Exception> {
@@ -147,7 +147,7 @@ impl Core {
         let inst = Decode::decode(self.pc, word, &self.xlen);
         match self.debug.as_str() {
             "trace" => itrace(self.pc, word, &inst),
-            "err" => regfile_trace(&self.regfile, "a0"), // HACK:
+            "err" => rtrace(&self.regfile, "a0"), // HACK:
             _ => {}
         }
         self.exec(word, inst)
@@ -180,7 +180,7 @@ impl Core {
                 // override MPP bits[12:11] with the current privilege mode encoding
                 self.csr[csr::CSR_MSTATUS_ADDR as usize] =
                     (self.csr[csr::CSR_MSTATUS_ADDR as usize] & !0x1800)
-                        | ((cur_priv_encode & 1) << 11);
+                        | ((cur_priv_encode & 0x3) << 11);
             }
             _ => panic!(),
         }
@@ -202,7 +202,7 @@ impl Core {
     }
 
     fn mmap_load_oper(&mut self, addr: u64) -> u8 {
-        // println!("addr: {:16x}", addr);
+        // println!("addr: {:016x}", addr);
         // HACK: range addr check
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
             panic!();
@@ -226,7 +226,7 @@ impl Core {
     }
 
     fn mmap_store_oper(&mut self, addr: u64, val: u8) {
-        // println!("addr: {:16x}", addr);
+        // println!("addr: {:016x}", addr);
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
             Uart::out(val);
         } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
@@ -246,7 +246,7 @@ impl Core {
     }
 
     fn load_phy_mem(&mut self, addr: u64) -> u8 {
-        // boundery check
+        // HACK: boundery check
         if addr < self.start_addr {
             panic!("[load]mem out of boundery");
         }
@@ -862,14 +862,6 @@ impl Core {
                         // HACK: no impl
                     }
                     Inst::ECALL => {
-                        let epc_addr = match self.priv_mode {
-                            PrivMode::User => csr::CSR_UEPC_ADDR,
-                            PrivMode::Supervisor => csr::CSR_SEPC_ADDR,
-                            PrivMode::Machine => csr::CSR_MEPC_ADDR,
-                            _ => panic!(),
-                        };
-
-                        self.csr[epc_addr as usize] = self.pc.wrapping_sub(4);
                         let excpt_type = match self.priv_mode {
                             PrivMode::User => ExceptionType::EnvCallFromUMode,
                             PrivMode::Supervisor => ExceptionType::EnvCallFromSMode,
@@ -1212,7 +1204,7 @@ impl Core {
                                 1 => PrivMode::Supervisor,
                                 3 => PrivMode::Machine,
                                 _ => panic!(),
-                            }
+                            };
                     }
                     _ => {
                         panic!()

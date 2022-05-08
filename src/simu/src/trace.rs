@@ -19,7 +19,7 @@ pub fn itrace(pc: u64, word: u32, inst: &Inst) {
     );
 }
 
-pub fn regfile_trace(regfile: &Regfile, val: &str) {
+pub fn rtrace(regfile: &Regfile, val: &str) {
     if val != "0" {
         println!("{}: {:016x}", val, regfile.val(val));
     }
@@ -28,3 +28,5 @@ pub fn csr_trace() {}
 
 pub fn mtrace() {}
 pub fn dtrace() {}
+
+pub fn etrace() {}
