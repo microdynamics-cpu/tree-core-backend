@@ -10,7 +10,7 @@ pub fn execpt_handle(pc: u64, word: u32) {
     panic!();
 }
 
-pub fn inst_trace(pc: u64, word: u32, inst: &Inst) {
+pub fn itrace(pc: u64, word: u32, inst: &Inst) {
     println!(
         "PC:{:016x}, Word:{:08x}, Inst:{}",
         pc.wrapping_sub(4),
@@ -25,3 +25,6 @@ pub fn regfile_trace(regfile: &Regfile, val: &str) {
     }
 }
 pub fn csr_trace() {}
+
+pub fn mtrace() {}
+pub fn dtrace() {}

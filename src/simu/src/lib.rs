@@ -11,3 +11,7 @@ pub mod mmu;
 pub mod csr;
 pub mod device;
 pub mod config;
+pub mod cli;
+pub mod thrp;
+pub mod web;
+pub mod ws;

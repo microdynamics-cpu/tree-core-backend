@@ -10,7 +10,8 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{inst_trace, regfile_trace};
+use crate::trace::{itrace, regfile_trace};
+use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
 const MEM_CAPACITY: usize = 1024 * 1024;
@@ -20,9 +21,14 @@ const PERIF_ADDR_SIZE: u64 = 0x1000u64;
 const SERIAL_START_OFFSET: u64 = 0x3F8u64;
 // const SERIAL_ADDR_SIZE: u64 = 0x4u64;
 const RTC_START_OFFSET: u64 = 0x48u64;
-const RTC_ADDR_SIZE: u64 = 0x08u64;
+const RTC_ADDR_SIZE: u64 = 0x08u64; // HACK: addr is surplus?
 const KDB_START_OFFSET: u64 = 0x60u64;
-const KDB_ADDR_OFFSET: u64 = 0x04u64; // only device -> core
+const KDB_ADDR_SIZE: u64 = 0x02u64; // only device -> core
+const VGA_VGACTL_START_OFFSET: u64 = 0x100u64;
+const VGA_SYNC_START_OFFSET: u64 = VGA_VGACTL_START_OFFSET + 4u64;
+const VGA_SYNC_ADDR_SIZE: u64 = 0x4u64;
+const VGA_FRAME_BUF_ADDR_START: u64 = 0xa0000000u64;
+const VGA_FRAME_BUF_ADDR_SIZE: u64 = 0x200000u64;
 
 pub struct Core {
     regfile: Regfile,
@@ -37,11 +43,11 @@ pub struct Core {
     dev: Device,
     inst_num: u64,
     xlen: XLen,
-    debug: bool,
+    debug: String,
 }
 
 impl Core {
-    pub fn new(debug_val: bool, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
+    pub fn new(debug_level: String, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -55,18 +61,48 @@ impl Core {
             dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
-            debug: debug_val,
+            debug: debug_level,
         }
     }
 
-    pub fn run_simu(&mut self, data: Vec<u8>) {
+    pub fn load_bin_file(&mut self, data: Vec<u8>) {
         for i in 0..data.len() {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
 
         self.pc = self.start_addr;
+    }
+
+    pub fn check_bound(&self, val: u8) -> u8 {
+        if val >= 80 {
+            80u8
+        } else {
+            val
+        }
+    }
+
+    pub fn run_simu(
+        &mut self,
+        kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
+        vga_tx: Option<mpsc::Sender<String>>,
+    ) {
         loop {
+            match kdb_rx {
+                Some(ref v) => {
+                    match v.try_recv() {
+                        Ok(mut vv) => {
+                            // println!("Got: {:?}", v)
+                            // HACK: trim because not support all key detect
+                            vv.0 = self.check_bound(vv.0);
+                            vv.1 = self.check_bound(vv.1);
+                            self.dev.kdb.det(vv.0, vv.1);
+                        }
+                        Err(_e) => {}
+                    }
+                }
+                None => {}
+            }
             // println!("val: {:08x}", self.load_word(self.pc));
             let end = match self.load_word(self.pc, true) {
                 Ok(w) => w == self.end_inst,
@@ -83,6 +119,12 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
+            if self.dev.vga.sync {
+                match vga_tx {
+                    Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
+                    None => {}
+                }
+            }
         }
     }
 
@@ -103,8 +145,10 @@ impl Core {
             Err(e) => return Err(e),
         };
         let inst = Decode::decode(self.pc, word, &self.xlen);
-        if self.debug {
-            inst_trace(self.pc, word, &inst);
+        match self.debug.as_str() {
+            "trace" => itrace(self.pc, word, &inst),
+            "err" => regfile_trace(&self.regfile, "a0"), // HACK:
+            _ => {}
         }
         self.exec(word, inst)
     }
@@ -166,16 +210,36 @@ impl Core {
             && addr <= PERIF_START_ADDR + RTC_START_OFFSET + RTC_ADDR_SIZE
         {
             self.dev.rtc.val()
+        } else if addr >= PERIF_START_ADDR + KDB_START_OFFSET
+            && addr < PERIF_START_ADDR + KDB_START_OFFSET + KDB_ADDR_SIZE
+        {
+            if addr == PERIF_START_ADDR + KDB_START_OFFSET {
+                self.dev.kdb.val(false)
+            } else if addr == PERIF_START_ADDR + KDB_START_OFFSET + KDB_ADDR_SIZE - 1u64 {
+                self.dev.kdb.val(true)
+            } else {
+                panic!("[kdb] error addr space")
+            }
         } else {
             panic!();
         }
     }
 
-    fn mmap_store_oper(&self, addr: u64, val: u8) {
+    fn mmap_store_oper(&mut self, addr: u64, val: u8) {
+        // println!("addr: {:16x}", addr);
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
             Uart::out(val);
         } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
             panic!();
+        } else if addr >= VGA_FRAME_BUF_ADDR_START
+            && addr <= VGA_FRAME_BUF_ADDR_START + VGA_FRAME_BUF_ADDR_SIZE
+        {
+            //NOTE: need to guard data transfer by use sync flag
+            self.dev.vga.store(addr, val);
+        } else if addr >= PERIF_START_ADDR + VGA_SYNC_START_OFFSET
+            && addr <= PERIF_START_ADDR + VGA_SYNC_START_OFFSET + VGA_SYNC_ADDR_SIZE
+        {
+            self.dev.vga.set_sync(val);
         } else {
             panic!();
         }
@@ -256,7 +320,10 @@ impl Core {
             panic!("[store]mem out of boundery");
         }
 
-        if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
+        if (addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE)
+            || (addr >= VGA_FRAME_BUF_ADDR_START
+                && addr <= VGA_FRAME_BUF_ADDR_START + VGA_FRAME_BUF_ADDR_SIZE)
+        {
             self.mmap_store_oper(addr, val);
         } else {
             // HACK: need to debug seek for season
