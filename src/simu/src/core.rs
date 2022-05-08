@@ -82,7 +82,7 @@ impl Core {
         }
     }
 
-    pub fn run_simu(&mut self, kdb_rx: Option<mpsc::Receiver<(u8, u8)>>) {
+    pub fn run_simu(&mut self, kdb_rx: Option<mpsc::Receiver<(u8, u8)>>, vga_tx: Option<mpsc::Sender<String>>) {
         loop {
             match kdb_rx {
                 Some(ref v) => {
@@ -115,6 +115,13 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
+
+            if self.inst_num % 5000 == 0 {
+                match vga_tx {
+                    Some(ref v) => v.send("[ws]: Hello I am maksyuki!".to_string()).unwrap(),
+                    None => {},
+                }
+            }
         }
     }
 

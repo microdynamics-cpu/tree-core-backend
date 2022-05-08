@@ -78,12 +78,13 @@ fn main() -> std::io::Result<()> {
             web_setup(kdb_tx);
         });
 
+        let (vga_tx, vga_rx) = mpsc::channel();
         thread::spawn(move || {
-            ws_setup();
+            ws_setup(vga_rx);
         });
-        core.run_simu(Some(kdb_rx));
+        core.run_simu(Some(kdb_rx), Some(vga_tx));
     } else {
-        core.run_simu(None);
+        core.run_simu(None, None);
     }
 
     Ok(())
