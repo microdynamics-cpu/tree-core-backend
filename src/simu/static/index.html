@@ -27,27 +27,13 @@
 <body>
     <h1> Keyboard Test</h1>
     <div id="det">pres keyboard</div>
-    <button id="btn" onclick="handle_btn()">send vga get response</button>
     <h1>WebSocket Client Test</h1>
+    <button id="btn" onclick="handle_btn()">send vga get response</button>
     <canvas id="vga"></canvas>
     <div id="log"></div>
     <!-- <script src="main.js"></script> -->
     <script src="https://pixijs.download/release/pixi.js"></script>
     <script>
-
-        function handle_btn() {
-            console.log("click btn!!!");
-            let xhr = new XMLHttpRequest();
-            xhr.open('GET', '/vga', true);
-            xhr.send(null);
-            xhr.onreadystatechange = function () {
-                // HACK: check other state?
-                if (xhr.readyState == 4) {
-                    console.log(xhr.responseText);
-                }
-            }
-        }
-
         document.onkeydown = function (even) {
             // console.log('press');
             let jpCode = even.keyCode;
@@ -134,13 +120,10 @@
 
         let wsUri = "ws://127.0.0.1:8383";
         console.log(wsUri);
-        let log;
 
-        function init() {
-            log = document.getElementById("log");
-            testWebSocket();
+        function handle_btn() {
+            console.log("click btn!!!");
         }
-
         function testWebSocket() {
             websocket = new WebSocket(wsUri);
             websocket.onopen = function (evt) { onOpen(evt) };
@@ -151,7 +134,7 @@
 
         function onOpen(evt) {
             writeLog("CONNECTED");
-            sendMessage("Hello world");
+            // sendMessage("Hello world");
         }
 
         function onClose(evt) {
@@ -159,12 +142,12 @@
         }
 
         function onMessage(evt) {
-            writeLog('<span style="color: blue;">RESPONSE: ' + evt.data + '</span>');
+            writeLog('[MSG]: ' + evt.data);
             // websocket.close();
         }
 
         function onError(evt) {
-            writeLog('<span style="color: red;">ERROR:</span> ' + evt.data);
+            writeLog('[ERROR]: ' + evt.data);
         }
 
         function sendMessage(message) {
@@ -173,12 +156,10 @@
         }
 
         function writeLog(message) {
-            let pre = document.createElement("p");
-            pre.innerHTML = message;
-            log.appendChild(pre);
+            console.log(message);
         }
 
-        window.addEventListener("load", init, false);
+        window.addEventListener("load", testWebSocket, false);
     </script>
 </body>
 

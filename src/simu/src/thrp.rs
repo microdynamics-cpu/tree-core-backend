@@ -1,6 +1,4 @@
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 enum Message {
@@ -23,15 +21,14 @@ impl ThreadPool {
     /// # Panics
     ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize, tx: std::sync::mpsc::Sender<(u8, u8)>) -> ThreadPool {
+    pub fn new(size: usize, kdb_tx: std::sync::mpsc::Sender<(u8, u8)>) -> ThreadPool {
         assert!(size > 0);
 
         let (sender, receiver) = mpsc::channel();
-        // let (rsender, rreceiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver), tx.clone()));
+            workers.push(Worker::new(id, Arc::clone(&receiver), kdb_tx.clone()));
         }
 
         ThreadPool { workers, sender }
@@ -76,7 +73,7 @@ impl Worker {
     fn new(
         id: usize,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
-        tx: std::sync::mpsc::Sender<(u8, u8)>,
+        kdb_tx: std::sync::mpsc::Sender<(u8, u8)>,
     ) -> Worker {
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
@@ -85,7 +82,7 @@ impl Worker {
                 Message::NewJob(job) => {
                     // println!("Worker {} got a job; executing.", id);
                     let res = job();
-                    tx.send(res).unwrap();
+                    kdb_tx.send(res).unwrap();
                 }
                 Message::Terminate => {
                     println!("Worker {} was told to terminate.", id);

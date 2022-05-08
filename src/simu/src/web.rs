@@ -3,10 +3,11 @@ use std::fs;
 use std::io::prelude::*;
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-pub fn web_setup(kdb_tx: std::sync::mpsc::Sender<(u8, u8)>) {
+pub fn web_setup(kdb_tx: mpsc::Sender<(u8, u8)>) {
     let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
 
     let pool = ThreadPool::new(4, kdb_tx);
@@ -52,15 +53,12 @@ fn handle_connection(mut stream: TcpStream) -> (u8, u8) {
 
     let req_get_idx = b"GET / HTTP/1.1\r\n";
     let req_get_sleep = b"GET /sleep HTTP/1.1\r\n";
-    let req_get_vga = b"GET /vga HTTP/1.1\r\n";
     let req_post_val = b"POST /value HTTP/1.1\r\n";
 
     let (status_line, filename) = if buffer.starts_with(req_get_idx) {
         ("HTTP/1.1 200 OK", "static/index.html")
     } else if buffer.starts_with(req_get_sleep) {
         thread::sleep(Duration::from_secs(5));
-        ("HTTP/1.1 404 NOT FOUND", "static/404.html")
-    } else if buffer.starts_with(req_get_vga) {
         ("HTTP/1.1 404 NOT FOUND", "static/404.html")
     } else if buffer.starts_with(req_post_val) {
         let press_val = match find_subsequence(&buffer, b"press") {
