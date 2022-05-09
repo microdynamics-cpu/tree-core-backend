@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::mpsc;
 use std::thread;
-use treecore_simu::cli::cli_mode;
+use treecore_simu::cli::Cli;
 use treecore_simu::config::XLen;
 use treecore_simu::core::Core;
 use treecore_simu::web::web_setup;
@@ -44,11 +44,6 @@ struct Args {
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    if args.inter {
-        cli_mode();
-        return Ok(());
-    }
-
     let mut core = Core::new(
         args.debug,
         match args.xlen.as_str() {
@@ -65,6 +60,12 @@ fn main() -> std::io::Result<()> {
             Err(_e) => panic!("need to set the right format!, the right format: 0xXXXX"),
         },
     );
+
+    if args.inter {
+        let cli = Cli::new();
+        cli.inter_mode(&mut core);
+        return Ok(());
+    }
 
     let mut file = File::open(args.bin)?;
     let mut contents = vec![];
