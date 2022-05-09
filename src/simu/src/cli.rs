@@ -1,5 +1,5 @@
 use crate::core::Core;
-// use std::io::Write;
+use std::io::{stdin, stdout, Write};
 
 // like nemu
 // 0x00000297,  // auipc t0,0
@@ -8,36 +8,114 @@ use crate::core::Core;
 // 0x0000006b,  // treecore_trap
 // 0xdeadbeef,  // some data
 
-
-pub struct Cli {
-    prompt: String,
+enum CliCmd {
+    NONE,
+    HELP,
+    QUIT,
+    DUMMY,
+    LOAD,
 }
 
-impl Cli {
+pub struct Cli<'a> {
+    prompt: &'a str,
+    cmd: CliCmd,
+    cmd_list: [&'a str; 4],
+}
+
+impl Cli<'_> {
     pub fn new() -> Self {
         Cli {
-            prompt: ">>>".to_string(),
+            prompt: ">>>",
+            cmd: CliCmd::NONE,
+            cmd_list: ["help", "quit", "dummy", "load"],
         }
     }
 
-    pub fn inter_mode(&self, core: &mut Core) {
-        println!("TreeCore RISCV ISA Simulator 0.0.1");
-        println!("[last-release] on Ubuntu 20.04 LTS");
-        println!("Type 'help' for more information.");
-        println!("{}", self.prompt);
+    fn flush(&self) {
+        match stdout().flush() {
+            Ok(()) => {}
+            Err(_e) => panic!(),
+        }
+    }
+
+    fn map_cmd(&self, val: &str) -> CliCmd {
+        match val {
+            "help" => CliCmd::HELP,
+            "quit" => CliCmd::QUIT,
+            "dummy" => CliCmd::DUMMY,
+            "load" => CliCmd::LOAD,
+            _ => panic!(),
+        }
+    }
+
+    fn cmd_parser(&mut self, val: &String) {
+        for v in self.cmd_list.iter() {
+            match val.find(v) {
+                Some(_v) => {
+                    self.cmd = self.map_cmd(v);
+                    return;
+                }
+                None => {}
+            }
+        }
+
+        self.cmd = CliCmd::NONE; // for no found cmd
+    }
+
+    // fn cmd_comp(&self) {
+
+    // }
+    // fn cmd_deduce(&self) {
+
+    // }
+
+    fn print_help(&self) {
+        for v in self.cmd_list.iter() {
+            println!("{}: {}", v, "placeholder");
+        }
+    }
+
+    pub fn inter_mode(&mut self, core: &mut Core) {
+        println!("\x1b[92mTreeCore RISCV ISA Simulator 0.0.1\x1b[0m");
+        println!("\x1b[92m[last-release] on Ubuntu 20.04 LTS\x1b[0m");
+        println!("\x1b[92mType 'help' for more information.\x1b[0m");
 
         let dummy_bin: Vec<u8> = vec![
-            0x97, 0x02, 0x00, 0x00, 0x23, 0xb8, 0x02, 0x00, 0x03, 0xb5, 0x02, 0x01, 0x6b, 0x00, 0x00,
-            0x00, 0xef, 0xbe, 0xad, 0xde,
+            0x97, 0x02, 0x00, 0x00, 0x23, 0xb8, 0x02, 0x00, 0x03, 0xb5, 0x02, 0x01, 0x6b, 0x00,
+            0x00, 0x00, 0xef, 0xbe, 0xad, 0xde,
         ];
-    
         core.load_bin_file(dummy_bin);
-        core.run_simu(None, None);
-        
-        loop {
 
+        let mut input_dat = String::new();
+        loop {
+            print!("{}", self.prompt);
+            self.flush();
+            match stdin().read_line(&mut input_dat) {
+                Ok(_v) => {
+                    // print!("[debug]{}", input_dat);
+                    self.cmd_parser(&input_dat);
+                    input_dat.clear();
+                    match self.cmd {
+                        CliCmd::NONE => {
+                            println!(
+                                "\x1b[93m[Warn] no support cmd, Type 'help' to get all legal cmds\x1b[0m"
+                            );
+                        }
+                        CliCmd::HELP => {
+                            self.print_help();
+                        }
+                        CliCmd::DUMMY => {
+                            core.run_simu(None, None);
+                        }
+                        CliCmd::QUIT => break,
+                        _ => panic!(),
+                    }
+                }
+                Err(e) => {
+                    println!("[err]: {}", e);
+                    panic!()
+                }
+            }
         }
     }
 }
-
-

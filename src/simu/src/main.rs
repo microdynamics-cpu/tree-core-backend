@@ -62,7 +62,7 @@ fn main() -> std::io::Result<()> {
     );
 
     if args.inter {
-        let cli = Cli::new();
+        let mut cli = Cli::new();
         cli.inter_mode(&mut core);
         return Ok(());
     }
