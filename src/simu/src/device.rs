@@ -1,18 +1,14 @@
 use std::io::{stdout, Write};
 use std::time::Instant;
 
-pub struct Uart {
-    // buf: u8,
-}
+pub struct Uart {}
 
 impl Uart {
-    // pub fn new() -> Self {
-    //     Uart {
-    //         // buf: 0u8,
-    //     }
-    // }
+    pub fn new() -> Self {
+        Uart {}
+    }
 
-    pub fn out(dat: u8) {
+    pub fn out(&self, dat: u8) {
         print!("{}", dat as char);
         match stdout().flush() {
             Ok(()) => {}
@@ -166,6 +162,7 @@ pub struct Clint {}
 impl Clint {}
 
 pub struct Device {
+    pub uart: Uart,
     pub rtc: Rtc,
     pub kdb: Keyboard,
     pub vga: Vga,
@@ -174,6 +171,7 @@ pub struct Device {
 impl Device {
     pub fn new() -> Self {
         Device {
+            uart: Uart::new(),
             rtc: Rtc::new(),
             kdb: Keyboard::new(),
             vga: Vga::new(),

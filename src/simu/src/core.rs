@@ -2,10 +2,9 @@ use crate::config::XLen;
 use crate::csr;
 use crate::data::Word;
 use crate::decode::Decode;
-use crate::device::{Device, Uart};
+use crate::device::Device;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
-use crate::mmu::AddrMode;
-use crate::mmu::MAType;
+use crate::mmu::{AddrMode, MAType};
 use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
@@ -241,7 +240,7 @@ impl Core {
     fn mmap_store_oper(&mut self, addr: u64, val: u8) {
         // println!("addr: {:016x}", addr);
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
-            Uart::out(val);
+            self.dev.uart.out(val);
         } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
             panic!();
         } else if addr >= VGA_FRAME_BUF_ADDR_START

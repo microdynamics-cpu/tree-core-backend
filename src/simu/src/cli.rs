@@ -51,9 +51,12 @@ impl Cli<'_> {
     fn cmd_parser(&mut self, val: &String) {
         for v in self.cmd_list.iter() {
             match val.find(v) {
-                Some(_v) => {
-                    self.cmd = self.map_cmd(v);
-                    return;
+                Some(vv) => {
+                    if vv == 0 && v.len() == val.len() - 1 {
+                        // check if equal literally
+                        self.cmd = self.map_cmd(v);
+                        return;
+                    }
                 }
                 None => {}
             }
@@ -67,10 +70,10 @@ impl Cli<'_> {
 
     // }
     // fn cmd_deduce(&self, val: &String) {
-        // let mut sim = 0;
-        // for v in self.cmd_list.iter() {
-            // for va in val.char
-        // }
+    // let mut sim = 0;
+    // for v in self.cmd_list.iter() {
+    // for va in val.char
+    // }
     // }
 
     fn print_help(&self) {
@@ -108,11 +111,12 @@ impl Cli<'_> {
                         CliCmd::HELP => {
                             self.print_help();
                         }
+                        CliCmd::QUIT => break,
                         CliCmd::DUMMY => {
                             core.reset();
                             core.run_simu(None, None);
                         }
-                        CliCmd::QUIT => break,
+                        CliCmd::LOAD => {}
                         _ => panic!(),
                     }
                 }
