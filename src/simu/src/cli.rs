@@ -1,5 +1,6 @@
+use std::io::{stdin, stdout, Read, Write};
+use std::fs::File;
 use crate::core::Core;
-use std::io::{stdin, stdout, Write};
 
 // like nemu
 // 0x00000297,  // auipc t0,0
@@ -12,13 +13,12 @@ enum CliCmd {
     NONE,
     HELP,
     QUIT,
-    DUMMY,
+    RUN,
     LOAD,
 }
 
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd: CliCmd,
     cmd_list: [&'a str; 4],
 }
 
@@ -26,8 +26,7 @@ impl Cli<'_> {
     pub fn new() -> Self {
         Cli {
             prompt: ">>>",
-            cmd: CliCmd::NONE,
-            cmd_list: ["help", "quit", "dummy", "load"],
+            cmd_list: ["help", "quit", "run", "load"],
         }
     }
 
@@ -42,27 +41,29 @@ impl Cli<'_> {
         match val {
             "help" => CliCmd::HELP,
             "quit" => CliCmd::QUIT,
-            "dummy" => CliCmd::DUMMY,
+            "run" => CliCmd::RUN,
             "load" => CliCmd::LOAD,
             _ => panic!(),
         }
     }
 
-    fn cmd_parser(&mut self, val: &String) {
-        for v in self.cmd_list.iter() {
-            match val.find(v) {
-                Some(vv) => {
-                    if vv == 0 && v.len() == val.len() - 1 {
-                        // check if equal literally
-                        self.cmd = self.map_cmd(v);
-                        return;
+    fn cmd_parser<'a>(&mut self, val: &'a String) -> (CliCmd, Option<&'a str>) {
+        let mut val_list = val.split_whitespace();
+        let first_args = val_list.next();
+        let sec_args = val_list.next();
+
+        match first_args {
+            Some(va) => {
+                for vb in self.cmd_list {
+                    if va == vb {
+                        return (self.map_cmd(vb), sec_args);
                     }
                 }
-                None => {}
             }
+            None => {}
         }
 
-        self.cmd = CliCmd::NONE;
+        (CliCmd::NONE, None)
         // self.cmd_deduce(val);
     }
 
@@ -100,9 +101,8 @@ impl Cli<'_> {
             match stdin().read_line(&mut input_dat) {
                 Ok(_v) => {
                     // print!("[debug]{}", input_dat);
-                    self.cmd_parser(&input_dat);
-                    input_dat.clear();
-                    match self.cmd {
+                    let (fir_cmd, sec_cmd) = self.cmd_parser(&input_dat);
+                    match fir_cmd {
                         CliCmd::NONE => {
                             println!(
                                 "\x1b[93m[Warn] no support cmd, Type 'help' to get all legal cmds\x1b[0m"
@@ -112,13 +112,34 @@ impl Cli<'_> {
                             self.print_help();
                         }
                         CliCmd::QUIT => break,
-                        CliCmd::DUMMY => {
+                        CliCmd::RUN => {
                             core.reset();
                             core.run_simu(None, None);
                         }
-                        CliCmd::LOAD => {}
+                        CliCmd::LOAD => match sec_cmd {
+                            Some(v) => {
+                                println!("\x1b[93m[binary loading]...\x1b[0m");
+                                match File::open(v) {
+                                    Ok(mut file) => {
+                                        let mut contents = vec![];
+                                        match file.read_to_end(&mut contents) {
+                                            Ok(_v) => {
+                                                println!("\x1b[92m[Loading Success]...\x1b[0m");
+                                                core.load_bin_file(contents);
+                                            },
+                                            Err(_e) => panic!(),
+                                        }
+                                    }
+                                    Err(_e) => panic!(),
+                                }
+                            }
+                            None => println!(
+                                "\x1b[93m[Warn] none binary path, please type right one\x1b[0m"
+                            ),
+                        },
                         _ => panic!(),
                     }
+                    input_dat.clear();
                 }
                 Err(e) => {
                     println!("[err]: {}", e);
