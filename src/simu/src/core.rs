@@ -9,7 +9,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, log, rtrace};
+use crate::trace::{itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -808,6 +808,7 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
+                        FTrace::ftrace(self.pc);
                     }
                     Inst::LB => {
                         self.regfile.x[rd as usize] = match self
@@ -1280,6 +1281,7 @@ impl Core {
                             self.regfile.x[rd as usize] = self.pc as i64;
                         }
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                        FTrace::ftrace(self.pc);
                     }
                     _ => {
                         println!(
