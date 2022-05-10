@@ -38,6 +38,13 @@ impl Rtc {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.cur_t = Instant::now();
+        self.buf = 0u32;
+        self.cnt = 0u8;
+        self.loading_flag = false;
+    }
+
     pub fn val(&mut self) -> u8 {
         if !self.loading_flag {
             self.buf = self.cur_t.elapsed().as_micros() as u32;
@@ -66,6 +73,11 @@ impl Keyboard {
             press: 0u8,
             code: 0u8,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.press = 0u8;
+        self.code = 0u8;
     }
 
     pub fn val(&self, offset: bool) -> u8 {
@@ -102,6 +114,12 @@ impl Vga {
             cnt: 0,
             buf: [0; VGA_BUF_SIZE],
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.sync = false;
+        self.cnt = 0;
+        self.buf = [0; VGA_BUF_SIZE];
     }
 
     pub fn val(&self, addr: u64) -> u8 {
@@ -143,6 +161,10 @@ impl Vga {
     }
 }
 
+pub struct Clint {}
+
+impl Clint {}
+
 pub struct Device {
     pub rtc: Rtc,
     pub kdb: Keyboard,
@@ -156,5 +178,11 @@ impl Device {
             kdb: Keyboard::new(),
             vga: Vga::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.rtc.reset();
+        self.kdb.reset();
+        self.vga.reset();
     }
 }

@@ -59,14 +59,18 @@ impl Cli<'_> {
             }
         }
 
-        self.cmd = CliCmd::NONE; // for no found cmd
+        self.cmd = CliCmd::NONE;
+        // self.cmd_deduce(val);
     }
 
     // fn cmd_comp(&self) {
 
     // }
-    // fn cmd_deduce(&self) {
-
+    // fn cmd_deduce(&self, val: &String) {
+        // let mut sim = 0;
+        // for v in self.cmd_list.iter() {
+            // for va in val.char
+        // }
     // }
 
     fn print_help(&self) {
@@ -105,6 +109,7 @@ impl Cli<'_> {
                             self.print_help();
                         }
                         CliCmd::DUMMY => {
+                            core.reset();
                             core.run_simu(None, None);
                         }
                         CliCmd::QUIT => break,

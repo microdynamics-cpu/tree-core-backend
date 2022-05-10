@@ -10,7 +10,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, rtrace, log};
+use crate::trace::{itrace, log, rtrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -65,13 +65,23 @@ impl Core {
         }
     }
 
+    // NOTE: like 'new' oper, but dont reset mem
+    pub fn reset(&mut self) {
+        self.regfile.reset();
+        self.pc = 0u64;
+        self.ppn = 0u64;
+        self.priv_mode = PrivMode::Machine;
+        self.addr_mode = AddrMode::None;
+        self.csr = [0; CSR_CAPACITY];
+        self.dev.reset();
+        self.inst_num = 0u64;
+    }
+
     pub fn load_bin_file(&mut self, data: Vec<u8>) {
         for i in 0..data.len() {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
-
-        self.pc = self.start_addr;
     }
 
     pub fn check_bound(&self, val: u8) -> u8 {
@@ -87,6 +97,8 @@ impl Core {
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
         vga_tx: Option<mpsc::Sender<String>>,
     ) {
+        self.pc = self.start_addr;
+
         loop {
             match kdb_rx {
                 Some(ref v) => {
