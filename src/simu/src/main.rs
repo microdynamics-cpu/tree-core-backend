@@ -21,6 +21,10 @@ struct Args {
     #[clap(short, long, default_value = "none")]
     debug: String,
 
+    /// Trace
+    #[clap(short, long, default_value = "none")]
+    trace: String,
+
     /// Bit width of the processor
     #[clap(short, long, default_value = "x64")]
     xlen: String,
@@ -46,6 +50,7 @@ fn main() -> std::io::Result<()> {
     let args = Args::parse();
     let mut core = Core::new(
         args.debug,
+        args.trace,
         match args.xlen.as_str() {
             "x32" => XLen::X32,
             "x64" => XLen::X64,

@@ -1,9 +1,8 @@
 use crate::inst::{get_inst_name, Inst};
 use crate::regfile::Regfile;
-use object::{Object, ObjectSection};
+use object::{Object, ObjectSymbol};
 use std::error::Error;
 use std::fs;
-
 
 pub fn execpt_handle(pc: u64, word: u32) {
     println!(
@@ -28,30 +27,54 @@ pub fn mtrace() {
 }
 
 pub struct FTrace {
-    // bin_data: io::Result<Vec<u8>>,
-// obj_file: Result<object::File<'a, &'a [u8]>>,
+    sym_addr_sta: Vec<u64>,
+    sym_addr_name: Vec<String>,
+    sym_num: u16,
 }
 
 impl FTrace {
-    pub fn new(elf: &str) -> Self {
+    pub fn new(_elf: &str) -> Self {
         FTrace {
-            // bin_data: fs::read(elf),
-            // match fs::read(elf) {
-                // Ok(v) => obj_file: object::File::parse(&*v),
-                // Err(_e) => panic!(),
-            // }
-            // obj_file: object::File::parse(&*fs::read(elf)?),
+            sym_addr_sta: vec![],
+            sym_addr_name: vec![],
+            sym_num: 0u16,
         }
     }
 
-    pub fn ftrace(addr: u64) -> Result<(), Box<dyn Error>> {
-        let bin_data = fs::read("./dependency/crt/am-kernels/tests/cpu-tests/build/printf-riscv64-treecore.elf")?;
+    pub fn ftrace(&mut self, ori_addr: u64, addr: u64) -> Result<(), Box<dyn Error>> {
+        let bin_data = fs::read(
+            "./dependency/crt/am-kernels/tests/cpu-tests/build/string-riscv64-treecore.elf",
+        )?;
         let obj_file = object::File::parse(&*bin_data)?;
-        let map = obj_file.symbol_map();
-        match map.get(addr) {
-            Some(v) => println!("{}", v.name()),
-            None => {},
+        // let dat = obj_file.symbol_table();
+        for v in obj_file.symbols() {
+            if v.address() == addr {
+                match v.name() {
+                    Ok(vv) => {
+                        self.sym_addr_sta.push(ori_addr);
+                        self.sym_num += 1;
+                        self.sym_addr_name.push(vv.to_string());
+                        print!("{:#x}:", ori_addr);
+                        print!("{:>1$}", " call ", (self.sym_num * 5) as usize);
+                        println!("[{}@{:#x}]", vv, addr);
+                    }
+                    Err(_e) => {}
+                }
+            } else {
+                if self.sym_addr_sta.last() == Some(&addr.wrapping_sub(4)) {
+                    print!("{:#x}:", ori_addr);
+                    print!("{:>1$}", " ret ", (self.sym_num * 5) as usize);
+                    match self.sym_addr_name.last() {
+                        Some(v) => println!("[{}]", v),
+                        None => {}
+                    }
+                    self.sym_addr_sta.pop();
+                    self.sym_addr_name.pop();
+                    self.sym_num -= 1;
+                }
+            }
         }
+
         Ok(())
     }
 }

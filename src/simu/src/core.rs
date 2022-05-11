@@ -42,11 +42,19 @@ pub struct Core {
     dev: Device,
     inst_num: u64,
     xlen: XLen,
-    debug: String,
+    dbg_level: String,
+    trace_type: String,
+    ftr: FTrace,
 }
 
 impl Core {
-    pub fn new(debug_level: String, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
+    pub fn new(
+        dbg_level: String,
+        trace_type: String,
+        xlen_val: XLen,
+        start_addr: u64,
+        end_inst: u32,
+    ) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -60,7 +68,9 @@ impl Core {
             dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
-            debug: debug_level,
+            dbg_level: dbg_level,
+            trace_type: trace_type,
+            ftr: FTrace::new("test"),
         }
     }
 
@@ -157,9 +167,17 @@ impl Core {
             Err(e) => return Err(e),
         };
         let inst = Decode::decode(self.pc, word, &self.xlen);
-        match self.debug.as_str() {
-            "trace" => itrace(self.pc, word, &inst),
-            "err" => rtrace(&self.regfile, "a0"), // HACK:
+        match self.dbg_level.as_str() {
+            "trace" => {
+                if self.trace_type == "itrace" {
+                    itrace(self.pc, word, &inst);
+                }
+            }
+            "err" => {
+                if self.trace_type == "rtrace" {
+                    rtrace(&self.regfile, "a0");
+                }
+            } // HACK:
             _ => {}
         }
         self.exec(word, inst)
@@ -266,7 +284,7 @@ impl Core {
         if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
             self.mmap_load_oper(addr) // BUG: bit width!
         } else {
-            // HACK: need to debug seek for season
+            // HACK: need to dbg_level seek for season
             match self.start_addr {
                 0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
                 _ => self.mem[addr as usize],
@@ -338,7 +356,7 @@ impl Core {
         {
             self.mmap_store_oper(addr, val);
         } else {
-            // HACK: need to debug seek for season
+            // HACK: need to dbg_level seek for season
             match self.start_addr {
                 0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
                 _ => self.mem[addr as usize] = val,
@@ -808,7 +826,13 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
-                        FTrace::ftrace(self.pc);
+
+                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                            match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
+                                Ok(()) => {}
+                                Err(_e) => panic!(),
+                            }
+                        }
                     }
                     Inst::LB => {
                         self.regfile.x[rd as usize] = match self
@@ -1280,8 +1304,14 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.pc as i64;
                         }
+                        let tmp_pc = self.pc;
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
-                        FTrace::ftrace(self.pc);
+                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                            match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
+                                Ok(()) => {}
+                                Err(_e) => panic!(),
+                            }
+                        }
                     }
                     _ => {
                         println!(
