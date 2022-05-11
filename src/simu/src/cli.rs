@@ -15,18 +15,19 @@ enum CliCmd {
     QUIT,
     RUN,
     LOAD,
+    TDB,
 }
 
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd_list: [&'a str; 4],
+    cmd_list: [&'a str; 5],
 }
 
 impl Cli<'_> {
     pub fn new() -> Self {
         Cli {
             prompt: ">>>",
-            cmd_list: ["help", "quit", "run", "load"],
+            cmd_list: ["help", "quit", "run", "load", "tdb"],
         }
     }
 
@@ -43,6 +44,7 @@ impl Cli<'_> {
             "quit" => CliCmd::QUIT,
             "run" => CliCmd::RUN,
             "load" => CliCmd::LOAD,
+            "tdb" => CliCmd::TDB,
             _ => panic!(),
         }
     }
@@ -137,6 +139,9 @@ impl Cli<'_> {
                                 "\x1b[93m[Warn] none binary path, please type right one\x1b[0m"
                             ),
                         },
+                        CliCmd::TDB => {
+                            println!("run tdb..."); // NOTE: no impl
+                        }
                         _ => panic!(),
                     }
                     input_dat.clear();
