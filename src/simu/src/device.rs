@@ -157,9 +157,23 @@ impl Vga {
     }
 }
 
-pub struct Clint {}
+pub struct Clint {
+    _mtime: u64,
+    _mtimecmp: u64,
+}
 
-impl Clint {}
+impl Clint {
+    pub fn new() -> Self {
+        Clint {
+            _mtime: 0u64,
+            _mtimecmp: 0u64,
+        }
+    }
+
+    pub fn update_time() {
+
+    }
+}
 
 pub struct Device {
     pub uart: Uart,

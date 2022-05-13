@@ -13,7 +13,7 @@ use crate::trace::{itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
-const MEM_CAPACITY: usize = 1024 * 1024;
+const MEM_CAPACITY: usize = 60 * 1024 * 1024;
 const CSR_CAPACITY: usize = 4096;
 const PERIF_START_ADDR: u64 = 0xa1000000u64;
 const PERIF_ADDR_SIZE: u64 = 0x1000u64;
@@ -38,7 +38,7 @@ pub struct Core {
     priv_mode: PrivMode,
     addr_mode: AddrMode,
     csr: [u64; CSR_CAPACITY],
-    mem: [u8; MEM_CAPACITY],
+    mem: Vec<u8>,
     dev: Device,
     inst_num: u64,
     xlen: XLen,
@@ -64,7 +64,7 @@ impl Core {
             priv_mode: PrivMode::Machine,
             addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
-            mem: [0; MEM_CAPACITY],
+            mem: Vec::with_capacity(MEM_CAPACITY),
             dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
@@ -87,6 +87,11 @@ impl Core {
     }
 
     pub fn load_bin_file(&mut self, data: Vec<u8>) {
+        // clear memory
+        for _i in 0..MEM_CAPACITY {
+            // BUG: error if reset!
+            self.mem.push(0);
+        }
         for i in 0..data.len() {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
