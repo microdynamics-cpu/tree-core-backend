@@ -13,13 +13,15 @@ pub fn execpt_handle(pc: u64, word: u32) {
     panic!();
 }
 
-pub fn itrace(pc: u64, word: u32, inst: &Inst) {
-    println!(
-        "PC:{:016x}, Word:{:08x}, Inst:{}",
-        pc.wrapping_sub(4),
-        word,
-        get_inst_name(&inst)
-    );
+pub fn itrace(pc: u64, word: u32, inst: &Inst, rge: &[u64; 2]) {
+    if pc >= rge[0] && pc <= rge[1] {
+        println!(
+            "PC:{:016x}, Word:{:08x}, Inst:{}",
+            pc.wrapping_sub(4),
+            word,
+            get_inst_name(&inst)
+        );
+    }
 }
 
 pub fn mtrace() {

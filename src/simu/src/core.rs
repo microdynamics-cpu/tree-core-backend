@@ -175,7 +175,7 @@ impl Core {
         match self.dbg_level.as_str() {
             "trace" => {
                 if self.trace_type == "itrace" {
-                    itrace(self.pc, word, &inst);
+                    itrace(self.pc, word, &inst, &[0x83000000u64, 0x88000490u64]);
                 }
             }
             "err" => {
@@ -283,6 +283,8 @@ impl Core {
     fn load_phy_mem(&mut self, addr: u64) -> u8 {
         // HACK: boundery check
         if addr < self.start_addr {
+            log!(addr);
+            log!(self.start_addr);
             panic!("[load]mem out of boundery");
         }
 
