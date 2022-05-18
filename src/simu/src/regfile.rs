@@ -7,6 +7,10 @@ impl Regfile {
         Regfile { x: [0i64; 32] }
     }
 
+    pub fn reset(&mut self) {
+        self.x = [0i64; 32];
+    }
+
     pub fn val(&self, v: &str) -> i64 {
         match v {
             "zero" => self.x[0],

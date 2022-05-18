@@ -1,18 +1,14 @@
 use std::io::{stdout, Write};
 use std::time::Instant;
 
-pub struct Uart {
-    // buf: u8,
-}
+pub struct Uart {}
 
 impl Uart {
-    // pub fn new() -> Self {
-    //     Uart {
-    //         // buf: 0u8,
-    //     }
-    // }
+    pub fn new() -> Self {
+        Uart {}
+    }
 
-    pub fn out(dat: u8) {
+    pub fn out(&self, dat: u8) {
         print!("{}", dat as char);
         match stdout().flush() {
             Ok(()) => {}
@@ -36,6 +32,13 @@ impl Rtc {
             cnt: 0u8,
             loading_flag: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.cur_t = Instant::now();
+        self.buf = 0u32;
+        self.cnt = 0u8;
+        self.loading_flag = false;
     }
 
     pub fn val(&mut self) -> u8 {
@@ -66,6 +69,11 @@ impl Keyboard {
             press: 0u8,
             code: 0u8,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.press = 0u8;
+        self.code = 0u8;
     }
 
     pub fn val(&self, offset: bool) -> u8 {
@@ -102,6 +110,12 @@ impl Vga {
             cnt: 0,
             buf: [0; VGA_BUF_SIZE],
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.sync = false;
+        self.cnt = 0;
+        self.buf = [0; VGA_BUF_SIZE];
     }
 
     pub fn val(&self, addr: u64) -> u8 {
@@ -143,7 +157,26 @@ impl Vga {
     }
 }
 
+pub struct Clint {
+    _mtime: u64,
+    _mtimecmp: u64,
+}
+
+impl Clint {
+    pub fn new() -> Self {
+        Clint {
+            _mtime: 0u64,
+            _mtimecmp: 0u64,
+        }
+    }
+
+    pub fn update_time() {
+
+    }
+}
+
 pub struct Device {
+    pub uart: Uart,
     pub rtc: Rtc,
     pub kdb: Keyboard,
     pub vga: Vga,
@@ -152,9 +185,16 @@ pub struct Device {
 impl Device {
     pub fn new() -> Self {
         Device {
+            uart: Uart::new(),
             rtc: Rtc::new(),
             kdb: Keyboard::new(),
             vga: Vga::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.rtc.reset();
+        self.kdb.reset();
+        self.vga.reset();
     }
 }

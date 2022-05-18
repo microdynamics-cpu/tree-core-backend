@@ -2,19 +2,18 @@ use crate::config::XLen;
 use crate::csr;
 use crate::data::Word;
 use crate::decode::Decode;
-use crate::device::{Device, Uart};
+use crate::device::Device;
 use crate::inst::{get_inst_name, get_instruction_type, Inst, InstType};
-use crate::mmu::AddrMode;
-use crate::mmu::MAType;
+use crate::mmu::{AddrMode, MAType};
 use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, regfile_trace};
+use crate::trace::{itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
-const MEM_CAPACITY: usize = 1024 * 1024;
+const MEM_CAPACITY: usize = 60 * 1024 * 1024;
 const CSR_CAPACITY: usize = 4096;
 const PERIF_START_ADDR: u64 = 0xa1000000u64;
 const PERIF_ADDR_SIZE: u64 = 0x1000u64;
@@ -39,15 +38,23 @@ pub struct Core {
     priv_mode: PrivMode,
     addr_mode: AddrMode,
     csr: [u64; CSR_CAPACITY],
-    mem: [u8; MEM_CAPACITY],
+    mem: Vec<u8>,
     dev: Device,
     inst_num: u64,
     xlen: XLen,
-    debug: String,
+    dbg_level: String,
+    trace_type: String,
+    ftr: FTrace,
 }
 
 impl Core {
-    pub fn new(debug_level: String, xlen_val: XLen, start_addr: u64, end_inst: u32) -> Self {
+    pub fn new(
+        dbg_level: String,
+        trace_type: String,
+        xlen_val: XLen,
+        start_addr: u64,
+        end_inst: u32,
+    ) -> Self {
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -57,21 +64,38 @@ impl Core {
             priv_mode: PrivMode::Machine,
             addr_mode: AddrMode::None,
             csr: [0; CSR_CAPACITY], // NOTE: need to prepare specific val for reg, such as mhardid
-            mem: [0; MEM_CAPACITY],
+            mem: Vec::with_capacity(MEM_CAPACITY),
             dev: Device::new(),
             inst_num: 0u64,
             xlen: xlen_val,
-            debug: debug_level,
+            dbg_level: dbg_level,
+            trace_type: trace_type,
+            ftr: FTrace::new("test"),
         }
     }
 
+    // NOTE: like 'new' oper, but dont reset mem
+    pub fn reset(&mut self) {
+        self.regfile.reset();
+        self.pc = 0u64;
+        self.ppn = 0u64;
+        self.priv_mode = PrivMode::Machine;
+        self.addr_mode = AddrMode::None;
+        self.csr = [0; CSR_CAPACITY];
+        self.dev.reset();
+        self.inst_num = 0u64;
+    }
+
     pub fn load_bin_file(&mut self, data: Vec<u8>) {
+        // clear memory
+        for _i in 0..MEM_CAPACITY {
+            // BUG: error if reset!
+            self.mem.push(0);
+        }
         for i in 0..data.len() {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
-
-        self.pc = self.start_addr;
     }
 
     pub fn check_bound(&self, val: u8) -> u8 {
@@ -87,6 +111,8 @@ impl Core {
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
         vga_tx: Option<mpsc::Sender<String>>,
     ) {
+        self.pc = self.start_addr;
+
         loop {
             match kdb_rx {
                 Some(ref v) => {
@@ -119,6 +145,7 @@ impl Core {
 
             self.tick();
             self.inst_num += 1;
+            // log!(self.pc);
             if self.dev.vga.sync {
                 match vga_tx {
                     Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
@@ -133,10 +160,10 @@ impl Core {
             Ok(()) => {}
             Err(e) => self.handle_trap(e),
         };
-        // regfile_trace(&self.regfile, "ra");
-        // regfile_trace(&self.regfile, "sp");
-        // regfile_trace(&self.regfile, "a4");
-        // regfile_trace(&self.regfile, "t2");
+        // rtrace(&self.regfile, "ra");
+        // rtrace(&self.regfile, "sp");
+        // rtrace(&self.regfile, "a4");
+        // rtrace(&self.regfile, "t2");
     }
 
     fn tick_wrap(&mut self) -> Result<(), Exception> {
@@ -145,9 +172,17 @@ impl Core {
             Err(e) => return Err(e),
         };
         let inst = Decode::decode(self.pc, word, &self.xlen);
-        match self.debug.as_str() {
-            "trace" => itrace(self.pc, word, &inst),
-            "err" => regfile_trace(&self.regfile, "a0"), // HACK:
+        match self.dbg_level.as_str() {
+            "trace" => {
+                if self.trace_type == "itrace" {
+                    itrace(self.pc, word, &inst, &[0x83000000u64, 0x88000490u64]);
+                }
+            }
+            "err" => {
+                if self.trace_type == "rtrace" {
+                    rtrace(&self.regfile, "a0");
+                }
+            } // HACK:
             _ => {}
         }
         self.exec(word, inst)
@@ -180,7 +215,7 @@ impl Core {
                 // override MPP bits[12:11] with the current privilege mode encoding
                 self.csr[csr::CSR_MSTATUS_ADDR as usize] =
                     (self.csr[csr::CSR_MSTATUS_ADDR as usize] & !0x1800)
-                        | ((cur_priv_encode & 1) << 11);
+                        | ((cur_priv_encode & 0x3) << 11);
             }
             _ => panic!(),
         }
@@ -202,7 +237,7 @@ impl Core {
     }
 
     fn mmap_load_oper(&mut self, addr: u64) -> u8 {
-        // println!("addr: {:16x}", addr);
+        // println!("addr: {:016x}", addr);
         // HACK: range addr check
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
             panic!();
@@ -226,9 +261,9 @@ impl Core {
     }
 
     fn mmap_store_oper(&mut self, addr: u64, val: u8) {
-        // println!("addr: {:16x}", addr);
+        // println!("addr: {:016x}", addr);
         if addr == PERIF_START_ADDR + SERIAL_START_OFFSET {
-            Uart::out(val);
+            self.dev.uart.out(val);
         } else if addr == PERIF_START_ADDR + RTC_START_OFFSET {
             panic!();
         } else if addr >= VGA_FRAME_BUF_ADDR_START
@@ -246,15 +281,17 @@ impl Core {
     }
 
     fn load_phy_mem(&mut self, addr: u64) -> u8 {
-        // boundery check
+        // HACK: boundery check
         if addr < self.start_addr {
+            log!(addr);
+            log!(self.start_addr);
             panic!("[load]mem out of boundery");
         }
 
         if addr >= PERIF_START_ADDR && addr <= PERIF_START_ADDR + PERIF_ADDR_SIZE {
             self.mmap_load_oper(addr) // BUG: bit width!
         } else {
-            // HACK: need to debug seek for season
+            // HACK: need to dbg_level seek for season
             match self.start_addr {
                 0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize],
                 _ => self.mem[addr as usize],
@@ -326,7 +363,7 @@ impl Core {
         {
             self.mmap_store_oper(addr, val);
         } else {
-            // HACK: need to debug seek for season
+            // HACK: need to dbg_level seek for season
             match self.start_addr {
                 0x8000_0000u64 => self.mem[(addr - self.start_addr) as usize] = val,
                 _ => self.mem[addr as usize] = val,
@@ -796,6 +833,13 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
+
+                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                            match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
+                                Ok(()) => {}
+                                Err(_e) => panic!(),
+                            }
+                        }
                     }
                     Inst::LB => {
                         self.regfile.x[rd as usize] = match self
@@ -862,14 +906,6 @@ impl Core {
                         // HACK: no impl
                     }
                     Inst::ECALL => {
-                        let epc_addr = match self.priv_mode {
-                            PrivMode::User => csr::CSR_UEPC_ADDR,
-                            PrivMode::Supervisor => csr::CSR_SEPC_ADDR,
-                            PrivMode::Machine => csr::CSR_MEPC_ADDR,
-                            _ => panic!(),
-                        };
-
-                        self.csr[epc_addr as usize] = self.pc.wrapping_sub(4);
                         let excpt_type = match self.priv_mode {
                             PrivMode::User => ExceptionType::EnvCallFromUMode,
                             PrivMode::Supervisor => ExceptionType::EnvCallFromSMode,
@@ -1212,7 +1248,7 @@ impl Core {
                                 1 => PrivMode::Supervisor,
                                 3 => PrivMode::Machine,
                                 _ => panic!(),
-                            }
+                            };
                     }
                     _ => {
                         panic!()
@@ -1275,7 +1311,14 @@ impl Core {
                         if rd > 0 {
                             self.regfile.x[rd as usize] = self.pc as i64;
                         }
+                        let tmp_pc = self.pc;
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
+                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                            match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
+                                Ok(()) => {}
+                                Err(_e) => panic!(),
+                            }
+                        }
                     }
                     _ => {
                         println!(
