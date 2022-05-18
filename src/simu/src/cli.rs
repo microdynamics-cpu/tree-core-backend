@@ -142,7 +142,7 @@ impl Cli<'_> {
                         CliCmd::TDB => {
                             println!("run tdb..."); // NOTE: no impl
                         }
-                        _ => panic!(),
+                        // _ => panic!(),
                     }
                     input_dat.clear();
                 }
