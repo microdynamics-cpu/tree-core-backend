@@ -98,14 +98,6 @@ impl Core {
         }
     }
 
-    pub fn check_bound(&self, val: u8) -> u8 {
-        if val >= 80 {
-            80u8
-        } else {
-            val
-        }
-    }
-
     pub fn run_simu(
         &mut self,
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
@@ -117,11 +109,8 @@ impl Core {
             match kdb_rx {
                 Some(ref v) => {
                     match v.try_recv() {
-                        Ok(mut vv) => {
+                        Ok(vv) => {
                             // println!("Got: {:?}", v)
-                            // HACK: trim because not support all key detect
-                            vv.0 = self.check_bound(vv.0);
-                            vv.1 = self.check_bound(vv.1);
                             self.dev.kdb.det(vv.0, vv.1);
                         }
                         Err(_e) => {}
@@ -1242,6 +1231,7 @@ impl Core {
                             Err(e) => return Err(e),
                         };
 
+                        // NOTE: need to set right mstatus value in process context switch
                         self.priv_mode =
                             match (self.csr[csr::CSR_MSTATUS_ADDR as usize] >> 11) & 0x3 {
                                 0 => PrivMode::User,
