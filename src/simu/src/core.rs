@@ -343,6 +343,8 @@ impl Core {
 
     fn store_phy_mem(&mut self, addr: u64, val: u8) {
         if addr < self.start_addr {
+            log!(addr);
+            log!(self.start_addr);
             panic!("[store]mem out of boundery");
         }
 
