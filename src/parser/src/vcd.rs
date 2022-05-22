@@ -1,6 +1,7 @@
+use nom::character::complete::multispace0;
 use nom::{
     bytes::complete::{tag, take_while_m_n},
-    combinator::map_res,
+    combinator::{map, map_res},
     sequence::tuple,
     IResult,
 };
@@ -10,16 +11,18 @@ enum TimeScaleUnit {
     PS,
 }
 
-#[derive(Debug)]
-pub struct Header {
-    date: String,
-    ver: String,
-    ts_val: u8,
-    ts_unit: TimeScaleUnit,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Header<'a> {
+    pub dat: &'a str,
+    pub spa: &'a str,
+    pub end: &'a str,
 }
 
-pub fn header(s: &str) -> IResult<&str, &str> {
-    tag("$date")(s)
+pub fn header(s: &str) -> IResult<&str, Header> {
+    map(
+        tuple((tag("$date"), multispace0, tag("$end"))),
+        |(dat, spa, end)| Header { dat, spa, end },
+    )(s)
 }
 
 #[cfg(test)]
@@ -28,11 +31,15 @@ mod test {
     #[test]
     fn test_header() {
         assert_eq!(
-            header("$date hello"),
+            header("$date\r\n $end"),
             Ok((
-                " hello", "$date"
+                "",
+                Header {
+                    dat: "$date",
+                    spa: "\r\n ",
+                    end: "$end"
+                }
             ))
         );
     }
 }
-
