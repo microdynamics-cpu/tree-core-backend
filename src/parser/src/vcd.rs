@@ -1,10 +1,17 @@
-use nom::character::complete::multispace0;
 use nom::{
+    branch::alt,
     bytes::complete::{tag, take_until},
+    character::complete::{digit0, multispace0},
     combinator::map,
     sequence::{delimited, tuple},
     IResult,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimeScale<'a> {
+    pub num: &'a str,
+    pub unit: &'a str,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Header<'a> {
@@ -15,7 +22,8 @@ pub struct Header<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Scope<'a> {
-    pub par: &'a str,
+    pub sc_type: &'a str,
+    pub sc_id: &'a str,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,25 +102,80 @@ pub fn dumpvars_simu_kw_par(s: &str) -> IResult<&str, &str> {
 }
 
 // declaration_command
-pub fn dat_decl_cmd_par(s: &str) -> IResult<&str, &str> {
-    delimited(dat_decl_kw_par, data_par, end_kw_par)(s)
-}
-
 pub fn ver_decl_cmd_par(s: &str) -> IResult<&str, &str> {
     delimited(ver_decl_kw_par, data_par, end_kw_par)(s)
 }
 
-pub fn tsc_decl_cmd_par(s: &str) -> IResult<&str, &str> {
-    delimited(tsc_decl_kw_par, data_par, end_kw_par)(s)
-}
-
-// simulation_command
+// ====== Description of keyword commands ======
+// $comment        $timescale $dumpall
+// $date           $upscope   $dumpoff
+// $enddefinitions $var       $dumpon
+// $scope          $version   $dumpvars
 pub fn comment_simu_cmd_par(s: &str) -> IResult<&str, &str> {
     delimited(comm_delc_kw_par, data_par, end_kw_par)(s)
 }
 
+pub fn dat_decl_cmd_par(s: &str) -> IResult<&str, &str> {
+    delimited(dat_decl_kw_par, data_par, end_kw_par)(s)
+}
+
 pub fn enddef_par(s: &str) -> IResult<&str, &str> {
     delimited(enddef_decl_kw_par, multispace0, end_kw_par)(s)
+}
+
+pub fn scope_type_par(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("begin"),
+            tag("fork"),
+            tag("function"),
+            tag("module"),
+            tag("task"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn scope_id_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, take_until(" "), multispace0)(s)
+}
+
+pub fn scope(s: &str) -> IResult<&str, Scope> {
+    map(
+        tuple((scope_decl_kw_par, scope_type_par, scope_id_par, end_kw_par)),
+        |(_, sc_type, sc_id, _)| Scope { sc_type, sc_id },
+    )(s)
+}
+
+pub fn tsc_num_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, digit0, multispace0)(s)
+}
+
+pub fn tsc_unit_par(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("s"),
+            tag("ms"),
+            tag("us"),
+            tag("ns"),
+            tag("ps"),
+            tag("fs"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn tsc(s: &str) -> IResult<&str, TimeScale> {
+    map(
+        tuple((tsc_decl_kw_par, tsc_num_par, tsc_unit_par, end_kw_par)),
+        |(_, num, unit, _)| TimeScale { num, unit },
+    )(s)
+}
+
+pub fn tsc_decl_cmd_par(s: &str) -> IResult<&str, &str> {
+    delimited(tsc_decl_kw_par, data_par, end_kw_par)(s)
 }
 
 pub fn header(s: &str) -> IResult<&str, Header> {
@@ -147,8 +210,32 @@ mod test {
     #[test]
     fn test_enddef_par() {
         assert_eq!(enddef_par("$enddefinitions $end"), Ok(("", "")));
-
         assert_eq!(enddef_par("$enddefinitions\r\n     $end"), Ok(("", "")))
+    }
+
+    #[test]
+    fn test_tsc() {
+        assert_eq!(
+            tsc("$timescale 10ps $end"),
+            Ok((
+                "",
+                TimeScale {
+                    num: "10",
+                    unit: "ps"
+                }
+            )),
+        );
+
+        assert_eq!(
+            tsc("$timescale\r\n 1ns\r\n$end"),
+            Ok((
+                "",
+                TimeScale {
+                    num: "1",
+                    unit: "ns"
+                }
+            )),
+        );
     }
 
     #[test]
@@ -161,6 +248,31 @@ mod test {
                     dat: "Mon Feb 22 19:49:29 2021",
                     ver: "Icarus Verilog",
                     tsc: "1ps",
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_scope() {
+        assert_eq!(
+            scope("$scope module tinyriscv_soc_tb $end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
+                }
+            ))
+        );
+
+        assert_eq!(
+            scope("$scope\r\n\t module tinyriscv_soc_tb \r\n$end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
                 }
             ))
         );
