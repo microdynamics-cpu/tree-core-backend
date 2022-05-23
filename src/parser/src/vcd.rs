@@ -1,7 +1,7 @@
 use nom::character::complete::multispace0;
 use nom::{
     bytes::complete::{tag, take_until},
-    combinator::{map, map_res},
+    combinator::map,
     sequence::{delimited, tuple},
     IResult,
 };
@@ -13,6 +13,16 @@ pub struct Header<'a> {
     pub tsc: &'a str,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope<'a> {
+    pub par: &'a str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Var<'a> {
+    pub bw: &'a str,
+}
+
 pub fn end_kw_par(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$end"), multispace0)(s)
 }
@@ -21,39 +31,101 @@ pub fn data_par(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, take_until("\r\n"), multispace0)(s)
 }
 
-pub fn dat_kw_par(s: &str) -> IResult<&str, &str> {
+// declaration_keyword
+pub fn comm_delc_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$comment"), multispace0)(s)
+}
+
+pub fn dat_decl_kw_par(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$date"), multispace0)(s)
 }
 
-pub fn ver_kw_par(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, tag("$version"), multispace0)(s)
+pub fn enddef_decl_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$enddefinitions"), multispace0)(s)
 }
 
-pub fn tsc_kw_par(s: &str) -> IResult<&str, &str> {
+pub fn scope_decl_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$scope"), multispace0)(s)
+}
+
+pub fn tsc_decl_kw_par(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$timescale"), multispace0)(s)
 }
 
-pub fn dat_par(s: &str) -> IResult<&str, &str> {
-    delimited(dat_kw_par, data_par, end_kw_par)(s)
+pub fn upscope_decl_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$upscope"), multispace0)(s)
 }
 
-pub fn ver_par(s: &str) -> IResult<&str, &str> {
-    delimited(ver_kw_par, data_par, end_kw_par)(s)
+pub fn var_decl_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$var"), multispace0)(s)
 }
 
-pub fn tsc_par(s: &str) -> IResult<&str, &str> {
-    delimited(tsc_kw_par, data_par, end_kw_par)(s)
+pub fn ver_decl_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$version"), multispace0)(s)
+}
+
+// simulation_keyword
+pub fn dumpall_simu_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpall"), multispace0)(s)
+}
+
+pub fn dumpoff_simu_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpoff"), multispace0)(s)
+}
+
+pub fn dumpon_simu_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpon"), multispace0)(s)
+}
+
+pub fn dumpvars_simu_kw_par(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpvars"), multispace0)(s)
+}
+
+// declaration_command
+pub fn dat_decl_cmd_par(s: &str) -> IResult<&str, &str> {
+    delimited(dat_decl_kw_par, data_par, end_kw_par)(s)
+}
+
+pub fn ver_decl_cmd_par(s: &str) -> IResult<&str, &str> {
+    delimited(ver_decl_kw_par, data_par, end_kw_par)(s)
+}
+
+pub fn tsc_decl_cmd_par(s: &str) -> IResult<&str, &str> {
+    delimited(tsc_decl_kw_par, data_par, end_kw_par)(s)
+}
+
+// simulation_command
+pub fn comment_simu_cmd_par(s: &str) -> IResult<&str, &str> {
+    // BUG:
+    delimited(comm_delc_kw_par, data_par, end_kw_par)(s)
 }
 
 pub fn header(s: &str) -> IResult<&str, Header> {
-    map(tuple((dat_par, ver_par, tsc_par)), |(dat, ver, tsc)| {
-        Header { dat, ver, tsc }
-    })(s)
+    map(
+        tuple((dat_decl_cmd_par, ver_decl_cmd_par, tsc_decl_cmd_par)),
+        |(dat, ver, tsc)| Header { dat, ver, tsc },
+    )(s)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_comment_simu_cmd_par() {
+        // assert_eq!(
+        //     comment_simu_cmd_par("$comment This is a single-line comment    $end"),
+        //     Ok((
+        //         "",
+        //         "This is a single-line comment    "
+        //     )),
+        // );
+
+        assert_eq!(
+            comment_simu_cmd_par("$comment This is a single-line comment\r\n    $end\r\n"),
+            Ok(("", "This is a single-line comment")),
+        );
+    }
 
     #[test]
     fn test_header() {
