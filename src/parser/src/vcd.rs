@@ -27,8 +27,20 @@ pub fn end_kw_par(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$end"), multispace0)(s)
 }
 
+pub fn trm_str(s: &str) -> &str {
+    // let iter: Vec<_> = s.trim().split_whitespace().collect();
+    // println!("[trm str]: {}", iter.join(" ").as_str());
+    // let mut res = "abc adfasd";
+    // res
+    s.trim()
+}
+
+//HACK: perf improve?
 pub fn data_par(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, take_until("\r\n"), multispace0)(s)
+    map(
+        delimited(multispace0, take_until("$end"), multispace0),
+        |s| trm_str(s),
+    )(s)
 }
 
 // declaration_keyword
@@ -96,8 +108,11 @@ pub fn tsc_decl_cmd_par(s: &str) -> IResult<&str, &str> {
 
 // simulation_command
 pub fn comment_simu_cmd_par(s: &str) -> IResult<&str, &str> {
-    // BUG:
     delimited(comm_delc_kw_par, data_par, end_kw_par)(s)
+}
+
+pub fn enddef_par(s: &str) -> IResult<&str, &str> {
+    delimited(enddef_decl_kw_par, multispace0, end_kw_par)(s)
 }
 
 pub fn header(s: &str) -> IResult<&str, Header> {
@@ -113,18 +128,27 @@ mod test {
 
     #[test]
     fn test_comment_simu_cmd_par() {
+        assert_eq!(
+            comment_simu_cmd_par("$comment This is a single-line comment    $end"),
+            Ok(("", "This is a single-line comment")),
+        );
+
         // assert_eq!(
-        //     comment_simu_cmd_par("$comment This is a single-line comment    $end"),
-        //     Ok((
-        //         "",
-        //         "This is a single-line comment    "
-        //     )),
+        //     comment_simu_cmd_par("$comment This is a\r\n single-line comment\r\n$end"),
+        //     Ok(("", "This is a single-line comment")),
         // );
 
         assert_eq!(
             comment_simu_cmd_par("$comment This is a single-line comment\r\n    $end\r\n"),
             Ok(("", "This is a single-line comment")),
         );
+    }
+
+    #[test]
+    fn test_enddef_par() {
+        assert_eq!(enddef_par("$enddefinitions $end"), Ok(("", "")));
+
+        assert_eq!(enddef_par("$enddefinitions\r\n     $end"), Ok(("", "")))
     }
 
     #[test]
