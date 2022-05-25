@@ -1,0 +1,358 @@
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_until},
+    character::complete::{digit0, digit1, multispace0},
+    combinator::{map, map_res},
+    sequence::{delimited, pair, separated_pair, tuple},
+    IResult,
+};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimeScale<'a> {
+    pub num: u8,
+    pub unit: &'a str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Header<'a> {
+    pub dat: &'a str,
+    pub ver: &'a str,
+    pub tsc: &'a str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope<'a> {
+    pub sc_type: &'a str,
+    pub sc_id: &'a str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Var<'a> {
+    pub var_type: &'a str,
+    pub bw: u8,
+    pub id: &'a str,
+    pub refer: &'a str,
+}
+
+// ref to the verilog-std-1364-2005 LRM
+// main entry
+// pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
+
+// }
+
+// declaration_keyword
+pub fn comm_delc_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$comment"), multispace0)(s)
+}
+
+pub fn dat_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$date"), multispace0)(s)
+}
+
+pub fn enddef_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$enddefinitions"), multispace0)(s)
+}
+
+pub fn scope_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$scope_decl_cmd"), multispace0)(s)
+}
+
+pub fn tsc_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$timescale"), multispace0)(s)
+}
+
+pub fn usc_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$upscope"), multispace0)(s)
+}
+
+pub fn var_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$var"), multispace0)(s)
+}
+
+pub fn ver_decl_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$version"), multispace0)(s)
+}
+
+// ====== Description of keyword commands ======
+// $comment        $timescale $dumpall
+// $date           $upscope   $dumpoff
+// $enddefinitions $var       $dumpon
+// $scope_decl_cmd $version   $dumpvars
+pub fn comm_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(comm_delc_kw, cmd_text, end_kw)(s)
+}
+
+pub fn dat_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(dat_decl_kw, cmd_text, end_kw)(s)
+}
+
+pub fn enddef_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(enddef_decl_kw, multispace0, end_kw)(s)
+}
+
+pub fn scope_type(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("begin"),
+            tag("fork"),
+            tag("function"),
+            tag("module"),
+            tag("task"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn scope_id(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, take_until(" "), multispace0)(s)
+}
+
+pub fn scope_decl_cmd(s: &str) -> IResult<&str, Scope> {
+    map(
+        tuple((scope_decl_kw, scope_type, scope_id, end_kw)),
+        |(_, sc_type, sc_id, _)| Scope { sc_type, sc_id },
+    )(s)
+}
+
+pub fn tsc_num(s: &str) -> IResult<&str, u8> {
+    map_res(digit1, |s: &str| s.parse::<u8>())(s)
+}
+
+pub fn tsc_unit(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("s"),
+            tag("ms"),
+            tag("us"),
+            tag("ns"),
+            tag("ps"),
+            tag("fs"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
+    map(
+        tuple((tsc_decl_kw, tsc_num, tsc_unit, end_kw)),
+        |(_, num, unit, _)| TimeScale { num, unit },
+    )(s)
+}
+
+pub fn usc_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(usc_decl_kw, multispace0, end_kw)(s)
+}
+
+pub fn variable_type(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("event"),
+            tag("integer"),
+            tag("parameter"),
+            tag("real"),
+            tag("realtime"),
+            tag("reg"),
+            tag("supply0"),
+            tag("supply1"),
+            tag("time"),
+            tag("tri"),
+            tag("triand"),
+            tag("trior"),
+            tag("trireg"),
+            tag("tri0"),
+            tag("tri1"),
+            tag("wand"),
+            tag("wire"),
+            tag("wor"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn variable_bw(s: &str) -> IResult<&str, u8> {
+    map_res(digit1, |s: &str| s.parse::<u8>())(s)
+}
+
+pub fn variable_id(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, take_until(" "), multispace0)(s)
+}
+
+pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
+    delimited(
+        tag("["),
+        separated_pair(variable_idx, tag(":"), variable_idx),
+        tag("]"),
+    )(s)
+}
+
+pub fn variable_idx(s: &str) -> IResult<&str, u8> {
+    map_res(digit0, |s: &str| s.parse::<u8>())(s)
+}
+pub fn variable_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+    delimited(multispace0, pair(variable_id, variable_vector), multispace0)(s)
+}
+
+pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
+    map(
+        tuple((
+            var_decl_kw,
+            variable_type,
+            variable_bw,
+            variable_id,
+            variable_id,
+            variable_vector,
+            end_kw,
+        )),
+        |(_, var_type, bw, id, refer, _, _)| Var {
+            var_type,
+            bw,
+            id,
+            refer,
+        },
+    )(s)
+}
+
+pub fn ver_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(ver_decl_kw, cmd_text, end_kw)(s)
+}
+
+pub fn trm_str(s: &str) -> &str {
+    // let iter: Vec<_> = s.trim().split_whitespace().collect();
+    // println!("[trm str]: {}", iter.join(" ").as_str());
+    // let mut res = "abc adfasd";
+    // res
+    s.trim()
+}
+
+pub fn cmd_text(s: &str) -> IResult<&str, &str> {
+    map(
+        delimited(multispace0, take_until("$end"), multispace0),
+        |s| trm_str(s),
+    )(s)
+}
+
+pub fn end_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$end"), multispace0)(s)
+}
+
+// simulation_keyword
+pub fn dumpall_simu_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpall"), multispace0)(s)
+}
+
+pub fn dumpoff_simu_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpoff"), multispace0)(s)
+}
+
+pub fn dumpon_simu_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpon"), multispace0)(s)
+}
+
+pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, tag("$dumpvars"), multispace0)(s)
+}
+
+// pub fn tsc_decl_cmd(s: &str) -> IResult<&str, &str> {
+//     delimited(tsc_decl_kw, cmd_text, end_kw)(s)
+// }
+
+// pub fn header(s: &str) -> IResult<&str, Header> {
+//     map(
+//         tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
+//         |(dat, ver, tsc)| Header { dat, ver, tsc },
+//     )(s)
+// }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_comm_decl_cmd() {
+        assert_eq!(
+            comm_decl_cmd("$comment This is a single-line comment    $end"),
+            Ok(("", "This is a single-line comment")),
+        );
+
+        // assert_eq!(
+        //     comm_decl_cmd("$comment This is a\r\n single-line comment\r\n$end"),
+        //     Ok(("", "This is a single-line comment")),
+        // );
+
+        assert_eq!(
+            comm_decl_cmd("$comment This is a single-line comment\r\n    $end\r\n"),
+            Ok(("", "This is a single-line comment")),
+        );
+    }
+
+    #[test]
+    fn test_enddef() {
+        assert_eq!(enddef_decl_cmd("$enddefinitions $end"), Ok(("", "")));
+        assert_eq!(
+            enddef_decl_cmd("$enddefinitions\r\n     $end"),
+            Ok(("", ""))
+        )
+    }
+
+    #[test]
+    fn test_tsc() {
+        assert_eq!(
+            tsc_decl_cmd("$timescale 10ps $end"),
+            Ok((
+                "",
+                TimeScale {
+                    num: 10,
+                    unit: "ps"
+                }
+            )),
+        );
+
+        assert_eq!(
+            tsc_decl_cmd("$timescale\r\n 1ns\r\n$end"),
+            Ok(("", TimeScale { num: 1, unit: "ns" })),
+        );
+    }
+
+    // #[test]
+    // fn test_header() {
+    //     assert_eq!(
+    //         header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
+    //         Ok((
+    //             "",
+    //             Header {
+    //                 dat: "Mon Feb 22 19:49:29 2021",
+    //                 ver: "Icarus Verilog",
+    //                 tsc: "1ps",
+    //             }
+    //         ))
+    //     );
+    // }
+
+    #[test]
+    fn test_scope() {
+        assert_eq!(
+            scope_decl_cmd("$scope_decl_cmd module tinyriscv_soc_tb $end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
+                }
+            ))
+        );
+
+        assert_eq!(
+            scope_decl_cmd("$scope_decl_cmd\r\n\t module tinyriscv_soc_tb \r\n$end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
+                }
+            ))
+        );
+    }
+}
