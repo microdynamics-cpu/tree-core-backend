@@ -1,15 +1,15 @@
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
-    character::complete::{digit0, multispace0},
-    combinator::map,
-    sequence::{delimited, tuple},
+    character::complete::{digit0, digit1, multispace0},
+    combinator::{map, map_res},
+    sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeScale<'a> {
-    pub num: &'a str,
+    pub num: u8,
     pub unit: &'a str,
 }
 
@@ -28,7 +28,10 @@ pub struct Scope<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Var<'a> {
-    pub bw: &'a str,
+    pub var_type: &'a str,
+    pub bw: u8,
+    pub id: &'a str,
+    pub refer: &'a str,
 }
 
 // ref to the verilog-std-1364-2005 LRM
@@ -58,7 +61,7 @@ pub fn tsc_decl_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$timescale"), multispace0)(s)
 }
 
-pub fn upscope_decl_kw(s: &str) -> IResult<&str, &str> {
+pub fn usc_decl_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$upscope"), multispace0)(s)
 }
 
@@ -112,8 +115,8 @@ pub fn scope_decl_cmd(s: &str) -> IResult<&str, Scope> {
     )(s)
 }
 
-pub fn tsc_num(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, digit0, multispace0)(s)
+pub fn tsc_num(s: &str) -> IResult<&str, u8> {
+    map_res(digit1, |s: &str| s.parse::<u8>())(s)
 }
 
 pub fn tsc_unit(s: &str) -> IResult<&str, &str> {
@@ -135,6 +138,80 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
     map(
         tuple((tsc_decl_kw, tsc_num, tsc_unit, end_kw)),
         |(_, num, unit, _)| TimeScale { num, unit },
+    )(s)
+}
+
+pub fn usc_decl_cmd(s: &str) -> IResult<&str, &str> {
+    delimited(usc_decl_kw, multispace0, end_kw)(s)
+}
+
+pub fn variable_type(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((
+            tag("event"),
+            tag("integer"),
+            tag("parameter"),
+            tag("real"),
+            tag("realtime"),
+            tag("reg"),
+            tag("supply0"),
+            tag("supply1"),
+            tag("time"),
+            tag("tri"),
+            tag("triand"),
+            tag("trior"),
+            tag("trireg"),
+            tag("tri0"),
+            tag("tri1"),
+            tag("wand"),
+            tag("wire"),
+            tag("wor"),
+        )),
+        multispace0,
+    )(s)
+}
+
+pub fn variable_bw(s: &str) -> IResult<&str, u8> {
+    map_res(digit1, |s: &str| s.parse::<u8>())(s)
+}
+
+pub fn variable_id(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, take_until(" "), multispace0)(s)
+}
+
+pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
+    delimited(
+        tag("["),
+        separated_pair(variable_idx, tag(":"), variable_idx),
+        tag("]"),
+    )(s)
+}
+
+pub fn variable_idx(s: &str) -> IResult<&str, u8> {
+    map_res(digit0, |s: &str| s.parse::<u8>())(s)
+}
+pub fn variable_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+    delimited(multispace0, pair(variable_id, variable_vector), multispace0)(s)
+}
+
+pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
+    map(
+        tuple((
+            var_decl_kw,
+            variable_type,
+            variable_bw,
+            variable_id,
+            variable_id,
+            variable_vector,
+            end_kw,
+        )),
+        |(_, var_type, bw, id, refer, _, _)| Var {
+            var_type,
+            bw,
+            id,
+            refer,
+        },
     )(s)
 }
 
@@ -227,7 +304,7 @@ mod test {
             Ok((
                 "",
                 TimeScale {
-                    num: "10",
+                    num: 10,
                     unit: "ps"
                 }
             )),
@@ -235,13 +312,7 @@ mod test {
 
         assert_eq!(
             tsc_decl_cmd("$timescale\r\n 1ns\r\n$end"),
-            Ok((
-                "",
-                TimeScale {
-                    num: "1",
-                    unit: "ns"
-                }
-            )),
+            Ok(("", TimeScale { num: 1, unit: "ns" })),
         );
     }
 
