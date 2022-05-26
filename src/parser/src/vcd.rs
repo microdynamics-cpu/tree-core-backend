@@ -152,18 +152,18 @@ pub fn variable_type(s: &str) -> IResult<&str, &str> {
             tag("event"),
             tag("integer"),
             tag("parameter"),
-            tag("real"),
             tag("realtime"),
+            tag("real"),
             tag("reg"),
             tag("supply0"),
             tag("supply1"),
             tag("time"),
-            tag("tri"),
             tag("triand"),
             tag("trior"),
             tag("trireg"),
             tag("tri0"),
             tag("tri1"),
+            tag("tri"),
             tag("wand"),
             tag("wire"),
             tag("wor"),
@@ -180,6 +180,10 @@ pub fn variable_id(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, take_until(" "), multispace0)(s)
 }
 
+pub fn variable_idx(s: &str) -> IResult<&str, u8> {
+    map_res(digit0, |s: &str| s.parse::<u8>())(s)
+}
+
 pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
     delimited(
         tag("["),
@@ -188,9 +192,6 @@ pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
     )(s)
 }
 
-pub fn variable_idx(s: &str) -> IResult<&str, u8> {
-    map_res(digit0, |s: &str| s.parse::<u8>())(s)
-}
 pub fn variable_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
     delimited(multispace0, pair(variable_id, variable_vector), multispace0)(s)
 }
@@ -389,11 +390,9 @@ mod test {
 
     #[test]
     fn test_scope_id() {
-        assert_eq!(scope_id("! "), Ok(("", "!")));
-        assert_eq!(scope_id("% \r\n     "), Ok(("", "%")));
-        assert_eq!(scope_id("4 \r\n     "), Ok(("", "4")));
-        assert_eq!(scope_id("@ \r\n   "), Ok(("", "@")));
-        assert_eq!(scope_id("] \r\n   \t"), Ok(("", "]")));
+        assert_eq!(scope_id("tinyriscv_soc_tb "), Ok(("", "tinyriscv_soc_tb")));
+        assert_eq!(scope_id("hello \r\n     "), Ok(("", "hello")));
+        assert_eq!(scope_id(" top \r\n     "), Ok(("", "top")));
     }
 
     #[test]
@@ -463,6 +462,67 @@ mod test {
             usc_decl_cmd("\r\n  \t $upscope   $end\r\n \t  "),
             Ok(("", "")),
         );
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_variable_type() {
+        assert_eq!(variable_type("event "), Ok(("", "event")));
+        assert_eq!(variable_type("integer \r\n     "), Ok(("", "integer")));
+        assert_eq!(variable_type("parameter \r\n     "), Ok(("", "parameter")));
+        assert_eq!(variable_type(" real \r\n     "), Ok(("", "real")));
+        assert_eq!(variable_type("\r\n realtime \r\n     "), Ok(("", "realtime")));
+        assert_eq!(variable_type("\r\n  \r reg \r\n     "), Ok(("", "reg")));
+        assert_eq!(variable_type("\r\n  \nsupply0 \r\n     "), Ok(("", "supply0")));
+        assert_eq!(variable_type("\r\n  \nsupply1 \r\n     "), Ok(("", "supply1")));
+        assert_eq!(variable_type("\r\n  time \r\n     "), Ok(("", "time")));
+        assert_eq!(variable_type("\r\n  tri\t \r\n     "), Ok(("", "tri")));
+        assert_eq!(variable_type("\r\n  triand\n\t \r\n     "), Ok(("", "triand")));
+        assert_eq!(variable_type("\r\n  trior \n\t \r\n     "), Ok(("", "trior")));
+        assert_eq!(variable_type("\r\n trireg \n\t \r\n     "), Ok(("", "trireg")));
+        assert_eq!(variable_type("\r\n tri0 \n\t \r\n     "), Ok(("", "tri0")));
+        assert_eq!(variable_type("\r\n tri1 \n\t \r\n     "), Ok(("", "tri1")));
+        assert_eq!(variable_type("\r\n wand \n\t  \r\n     "), Ok(("", "wand")));
+        assert_eq!(variable_type("\r\n wire  \n\t  \r\n     "), Ok(("", "wire")));
+        assert_eq!(variable_type("\r\n wor    \n\t  \r\n     "), Ok(("", "wor")));
+    }
+
+    #[test]
+    fn test_variable_bw() {
+        assert_eq!(variable_bw("1 "), Ok((" ", 1)));
+        assert_eq!(variable_bw("10 \r\n     "), Ok((" \r\n     ", 10)));
+        assert_eq!(variable_bw("100 \r\n     "), Ok((" \r\n     ", 100)));
+    }
+
+    #[test]
+    fn test_variable_id() {
+        assert_eq!(variable_id("! "), Ok(("", "!")));
+        assert_eq!(variable_id("% \r\n     "), Ok(("", "%")));
+        assert_eq!(variable_id("4 \r\n     "), Ok(("", "4")));
+        assert_eq!(variable_id("@ \r\n   "), Ok(("", "@")));
+        assert_eq!(variable_id("] \r\n   \t"), Ok(("", "]")));
+    }
+
+    #[test]
+    fn test_variable_idx() {
+        assert_eq!(variable_idx("1 "), Ok((" ", 1)));
+        assert_eq!(variable_idx("23 \r\n     "), Ok((" \r\n     ", 23)));
+        assert_eq!(variable_idx("134 \r\n     "), Ok((" \r\n     ", 134)));
+    }
+
+    #[test]
+    fn test_variable_vector() {
+        assert_eq!(variable_vector("[13:0] "), Ok((" ", (13, 0))));
+        assert_eq!(variable_vector("[31:0] \r"), Ok((" \r", (31, 0))));
+        assert_eq!(variable_vector("[0:0] \r"), Ok((" \r", (0, 0))));
+    }
+
+    #[test]
+    fn test_variable_ref() {
+        assert_eq!(variable_ref(" r [31:0] "), Ok(("", ("r", (31, 0)))));
+        assert_eq!(variable_ref(" ab [0:0] "), Ok(("", ("ab", (0, 0)))));
+        assert_eq!(variable_ref("\r\n ab [0:0]\r\n "), Ok(("", ("ab", (0, 0)))));
+        assert_eq!(variable_ref("\r\n rst \r\n "), Ok(("", ("rst", (0, 0)))));
     }
 
     // #[test]
