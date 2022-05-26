@@ -54,7 +54,7 @@ pub fn enddef_decl_kw(s: &str) -> IResult<&str, &str> {
 }
 
 pub fn scope_decl_kw(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, tag("$scope_decl_cmd"), multispace0)(s)
+    delimited(multispace0, tag("$scope"), multispace0)(s)
 }
 
 pub fn tsc_decl_kw(s: &str) -> IResult<&str, &str> {
@@ -271,6 +271,83 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_comm_delc_kw() {
+        assert_eq!(comm_delc_kw("$comment"), Ok(("", "$comment")),);
+
+        assert_eq!(
+            comm_delc_kw("\r\n  \t $comment\r\n \t  "),
+            Ok(("", "$comment")),
+        );
+    }
+
+    #[test]
+    fn test_dat_delc_kw() {
+        assert_eq!(dat_decl_kw("$date"), Ok(("", "$date")),);
+
+        assert_eq!(dat_decl_kw("\r\n  \t $date\r\n \t  "), Ok(("", "$date")),);
+    }
+
+    #[test]
+    fn test_enddef_delc_kw() {
+        assert_eq!(
+            enddef_decl_kw("$enddefinitions"),
+            Ok(("", "$enddefinitions")),
+        );
+
+        assert_eq!(
+            enddef_decl_kw("\r\n  \t $enddefinitions\r\n \t  "),
+            Ok(("", "$enddefinitions")),
+        );
+    }
+
+    #[test]
+    fn test_scope_delc_kw() {
+        assert_eq!(scope_decl_kw("$scope"), Ok(("", "$scope")),);
+
+        assert_eq!(
+            scope_decl_kw("\r\n  \t $scope\r\n \t  "),
+            Ok(("", "$scope")),
+        );
+    }
+
+    #[test]
+    fn test_tsc_delc_kw() {
+        assert_eq!(tsc_decl_kw("$timescale"), Ok(("", "$timescale")),);
+
+        assert_eq!(
+            tsc_decl_kw("\r\n  \t $timescale\r\n \t  "),
+            Ok(("", "$timescale")),
+        );
+    }
+
+    #[test]
+    fn test_usc_delc_kw() {
+        assert_eq!(usc_decl_kw("$upscope"), Ok(("", "$upscope")),);
+
+        assert_eq!(
+            usc_decl_kw("\r\n  \t $upscope\r\n \t  "),
+            Ok(("", "$upscope")),
+        );
+    }
+
+    #[test]
+    fn test_var_delc_kw() {
+        assert_eq!(var_decl_kw("$var"), Ok(("", "$var")),);
+
+        assert_eq!(var_decl_kw("\r\n  \t $var\r\n \t  "), Ok(("", "$var")),);
+    }
+
+    #[test]
+    fn test_ver_delc_kw() {
+        assert_eq!(ver_decl_kw("$version"), Ok(("", "$version")),);
+
+        assert_eq!(
+            ver_decl_kw("\r\n  \t $version\r\n \t  "),
+            Ok(("", "$version")),
+        );
+    }
+
+    #[test]
     fn test_comm_decl_cmd() {
         assert_eq!(
             comm_decl_cmd("$comment This is a single-line comment    $end"),
@@ -334,7 +411,7 @@ mod test {
     #[test]
     fn test_scope() {
         assert_eq!(
-            scope_decl_cmd("$scope_decl_cmd module tinyriscv_soc_tb $end"),
+            scope_decl_cmd("$scope module tinyriscv_soc_tb $end"),
             Ok((
                 "",
                 Scope {
@@ -345,7 +422,7 @@ mod test {
         );
 
         assert_eq!(
-            scope_decl_cmd("$scope_decl_cmd\r\n\t module tinyriscv_soc_tb \r\n$end"),
+            scope_decl_cmd("$scope\r\n\t module tinyriscv_soc_tb \r\n$end"),
             Ok((
                 "",
                 Scope {
