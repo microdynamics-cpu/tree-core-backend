@@ -273,7 +273,6 @@ mod test {
     #[test]
     fn test_comm_delc_kw() {
         assert_eq!(comm_delc_kw("$comment"), Ok(("", "$comment")),);
-
         assert_eq!(
             comm_delc_kw("\r\n  \t $comment\r\n \t  "),
             Ok(("", "$comment")),
@@ -283,7 +282,6 @@ mod test {
     #[test]
     fn test_dat_delc_kw() {
         assert_eq!(dat_decl_kw("$date"), Ok(("", "$date")),);
-
         assert_eq!(dat_decl_kw("\r\n  \t $date\r\n \t  "), Ok(("", "$date")),);
     }
 
@@ -303,7 +301,6 @@ mod test {
     #[test]
     fn test_scope_delc_kw() {
         assert_eq!(scope_decl_kw("$scope"), Ok(("", "$scope")),);
-
         assert_eq!(
             scope_decl_kw("\r\n  \t $scope\r\n \t  "),
             Ok(("", "$scope")),
@@ -313,7 +310,6 @@ mod test {
     #[test]
     fn test_tsc_delc_kw() {
         assert_eq!(tsc_decl_kw("$timescale"), Ok(("", "$timescale")),);
-
         assert_eq!(
             tsc_decl_kw("\r\n  \t $timescale\r\n \t  "),
             Ok(("", "$timescale")),
@@ -323,7 +319,6 @@ mod test {
     #[test]
     fn test_usc_delc_kw() {
         assert_eq!(usc_decl_kw("$upscope"), Ok(("", "$upscope")),);
-
         assert_eq!(
             usc_decl_kw("\r\n  \t $upscope\r\n \t  "),
             Ok(("", "$upscope")),
@@ -333,14 +328,12 @@ mod test {
     #[test]
     fn test_var_delc_kw() {
         assert_eq!(var_decl_kw("$var"), Ok(("", "$var")),);
-
         assert_eq!(var_decl_kw("\r\n  \t $var\r\n \t  "), Ok(("", "$var")),);
     }
 
     #[test]
     fn test_ver_delc_kw() {
         assert_eq!(ver_decl_kw("$version"), Ok(("", "$version")),);
-
         assert_eq!(
             ver_decl_kw("\r\n  \t $version\r\n \t  "),
             Ok(("", "$version")),
@@ -366,50 +359,45 @@ mod test {
     }
 
     #[test]
-    fn test_enddef() {
+    fn test_dat_decl_cmd() {
+        assert_eq!(
+            dat_decl_cmd("$date Mon Feb 22 19:49:29 2021    $end"),
+            Ok(("", "Mon Feb 22 19:49:29 2021")),
+        );
+        assert_eq!(
+            dat_decl_cmd("$date Mon Feb 22 19:49:29 2021\r\n    $end\r\n"),
+            Ok(("", "Mon Feb 22 19:49:29 2021")),
+        );
+    }
+
+    #[test]
+    fn test_enddef_decl_cmd() {
         assert_eq!(enddef_decl_cmd("$enddefinitions $end"), Ok(("", "")));
         assert_eq!(
             enddef_decl_cmd("$enddefinitions\r\n     $end"),
             Ok(("", ""))
         )
     }
-
     #[test]
-    fn test_tsc() {
-        assert_eq!(
-            tsc_decl_cmd("$timescale 10ps $end"),
-            Ok((
-                "",
-                TimeScale {
-                    num: 10,
-                    unit: "ps"
-                }
-            )),
-        );
-
-        assert_eq!(
-            tsc_decl_cmd("$timescale\r\n 1ns\r\n$end"),
-            Ok(("", TimeScale { num: 1, unit: "ns" })),
-        );
+    fn test_scope_type() {
+        assert_eq!(scope_type("begin"), Ok(("", "begin")));
+        assert_eq!(scope_type("fork\r\n     "), Ok(("", "fork")));
+        assert_eq!(scope_type("function\r\n     "), Ok(("", "function")));
+        assert_eq!(scope_type("module\r\n   "), Ok(("", "module")));
+        assert_eq!(scope_type("task \r\n   \t"), Ok(("", "task")));
     }
 
-    // #[test]
-    // fn test_header() {
-    //     assert_eq!(
-    //         header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
-    //         Ok((
-    //             "",
-    //             Header {
-    //                 dat: "Mon Feb 22 19:49:29 2021",
-    //                 ver: "Icarus Verilog",
-    //                 tsc: "1ps",
-    //             }
-    //         ))
-    //     );
-    // }
+    #[test]
+    fn test_scope_id() {
+        assert_eq!(scope_id("! "), Ok(("", "!")));
+        assert_eq!(scope_id("% \r\n     "), Ok(("", "%")));
+        assert_eq!(scope_id("4 \r\n     "), Ok(("", "4")));
+        assert_eq!(scope_id("@ \r\n   "), Ok(("", "@")));
+        assert_eq!(scope_id("] \r\n   \t"), Ok(("", "]")));
+    }
 
     #[test]
-    fn test_scope() {
+    fn test_scope_decl_cmd() {
         assert_eq!(
             scope_decl_cmd("$scope module tinyriscv_soc_tb $end"),
             Ok((
@@ -432,4 +420,63 @@ mod test {
             ))
         );
     }
+
+    #[test]
+    fn test_tsc_num() {
+        assert_eq!(tsc_num("1 "), Ok((" ", 1)));
+        assert_eq!(tsc_num("10 \r\n     "), Ok((" \r\n     ", 10)));
+        assert_eq!(tsc_num("100 \r\n     "), Ok((" \r\n     ", 100)));
+    }
+
+    #[test]
+    fn test_tsc_unit() {
+        assert_eq!(tsc_unit("s "), Ok(("", "s")));
+        assert_eq!(tsc_unit("ms \r\n     "), Ok(("", "ms")));
+        assert_eq!(tsc_unit("us \r\n     "), Ok(("", "us")));
+        assert_eq!(tsc_unit(" ps \r\n     "), Ok(("", "ps")));
+        assert_eq!(tsc_unit("\r\n fs \r\n     "), Ok(("", "fs")));
+    }
+
+    #[test]
+    fn test_tsc_decl_cmd() {
+        assert_eq!(
+            tsc_decl_cmd("$timescale 10ps $end"),
+            Ok((
+                "",
+                TimeScale {
+                    num: 10,
+                    unit: "ps"
+                }
+            )),
+        );
+
+        assert_eq!(
+            tsc_decl_cmd("$timescale\r\n 1ns\r\n$end"),
+            Ok(("", TimeScale { num: 1, unit: "ns" })),
+        );
+    }
+
+    #[test]
+    fn test_usc_decl_cmd() {
+        assert_eq!(usc_decl_cmd("$upscope $end"), Ok(("", "")),);
+        assert_eq!(
+            usc_decl_cmd("\r\n  \t $upscope   $end\r\n \t  "),
+            Ok(("", "")),
+        );
+    }
+
+    // #[test]
+    // fn test_header() {
+    //     assert_eq!(
+    //         header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
+    //         Ok((
+    //             "",
+    //             Header {
+    //                 dat: "Mon Feb 22 19:49:29 2021",
+    //                 ver: "Icarus Verilog",
+    //                 tsc: "1ps",
+    //             }
+    //         ))
+    //     );
+    // }
 }
