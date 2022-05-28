@@ -581,6 +581,21 @@ mod test {
             ))
         );
     }
+
+    #[test]
+    fn test_ver_decl_cmd() {
+        assert_eq!(ver_decl_cmd("$version hello $end"), Ok(("", "hello")),);
+        assert_eq!(
+            ver_decl_cmd("$version\r\n\t Icarus Verilog\r\n$end"),
+            Ok(("", "Icarus Verilog")),
+        );
+    }
+
+    #[test]
+    fn test_end_kw() {
+        assert_eq!(end_kw("$end"), Ok(("", "$end")));
+        assert_eq!(end_kw("\r\n $end\t "), Ok(("", "$end")));
+    }
     // #[test]
     // fn test_header() {
     //     assert_eq!(
