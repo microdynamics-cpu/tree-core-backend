@@ -32,6 +32,7 @@ pub struct Var<'a> {
     pub bw: u8,
     pub id: &'a str,
     pub refer: &'a str,
+    pub idx: (u8, u8),
 }
 
 // ref to the verilog-std-1364-2005 LRM
@@ -192,10 +193,15 @@ pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
     )(s)
 }
 
-pub fn variable_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+pub fn variable_vec_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
     delimited(multispace0, pair(variable_id, variable_vector), multispace0)(s)
 }
 
+pub fn variable_sca_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+    map(delimited(multispace0, variable_id, multispace0), |s| {
+        (s, (0, 0))
+    })(s)
+}
 pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
     map(
         tuple((
@@ -203,15 +209,23 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
             variable_type,
             variable_bw,
             variable_id,
-            variable_id,
-            variable_vector,
+            // variable_id,
+            // variable_vector,
+            alt((variable_vec_ref, variable_sca_ref)),
             end_kw,
         )),
-        |(_, var_type, bw, id, refer, _, _)| Var {
-            var_type,
-            bw,
-            id,
-            refer,
+        |(_, var_type, bw, id, refer, _)| {
+            let res = Var {
+                var_type,
+                bw,
+                id,
+                refer: refer.0,
+                idx: refer.1,
+            };
+            if res.bw > 1 {
+                println!("bw > 1");
+            }
+            res
         },
     )(s)
 }
@@ -519,12 +533,54 @@ mod test {
 
     #[test]
     fn test_variable_ref() {
-        assert_eq!(variable_ref(" r [31:0] "), Ok(("", ("r", (31, 0)))));
-        assert_eq!(variable_ref(" ab [0:0] "), Ok(("", ("ab", (0, 0)))));
-        assert_eq!(variable_ref("\r\n ab [0:0]\r\n "), Ok(("", ("ab", (0, 0)))));
-        assert_eq!(variable_ref("\r\n rst \r\n "), Ok(("", ("rst", (0, 0)))));
+        assert_eq!(variable_vec_ref(" r [31:0] "), Ok(("", ("r", (31, 0)))));
+        assert_eq!(variable_vec_ref(" ab [0:0] "), Ok(("", ("ab", (0, 0)))));
+        assert_eq!(
+            variable_vec_ref("\r\n ab [0:0]\r\n "),
+            Ok(("", ("ab", (0, 0))))
+        );
+        // assert_eq!(variable_vec_ref("\r\n rst \r\n "), Ok(("", ("rst", (0, 0)))));
     }
 
+    #[test]
+    fn test_variable_sca_ref() {
+        assert_eq!(variable_sca_ref("clk "), Ok(("", ("clk", (0, 0)))));
+        assert_eq!(
+            variable_sca_ref("\r\n rst \r\n "),
+            Ok(("", ("rst", (0, 0))))
+        );
+    }
+
+    #[test]
+    fn test_var_decl_cmd() {
+        assert_eq!(
+            var_decl_cmd("$var wire 32 ! x26 [31:0] $end"),
+            Ok((
+                "",
+                Var {
+                    var_type: "wire",
+                    bw: 32,
+                    id: "!",
+                    refer: "x26",
+                    idx: (31, 0),
+                }
+            ))
+        );
+
+        assert_eq!(
+            var_decl_cmd("$var reg 1 $ clk $end"),
+            Ok((
+                "",
+                Var {
+                    var_type: "reg",
+                    bw: 1,
+                    id: "$",
+                    refer: "clk",
+                    idx: (0, 0),
+                }
+            ))
+        );
+    }
     // #[test]
     // fn test_header() {
     //     assert_eq!(
