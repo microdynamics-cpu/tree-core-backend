@@ -32,6 +32,7 @@ pub struct Var<'a> {
     pub bw: u8,
     pub id: &'a str,
     pub refer: &'a str,
+    pub idx: (u8, u8),
 }
 
 // ref to the verilog-std-1364-2005 LRM
@@ -54,7 +55,7 @@ pub fn enddef_decl_kw(s: &str) -> IResult<&str, &str> {
 }
 
 pub fn scope_decl_kw(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, tag("$scope_decl_cmd"), multispace0)(s)
+    delimited(multispace0, tag("$scope"), multispace0)(s)
 }
 
 pub fn tsc_decl_kw(s: &str) -> IResult<&str, &str> {
@@ -152,18 +153,18 @@ pub fn variable_type(s: &str) -> IResult<&str, &str> {
             tag("event"),
             tag("integer"),
             tag("parameter"),
-            tag("real"),
             tag("realtime"),
+            tag("real"),
             tag("reg"),
             tag("supply0"),
             tag("supply1"),
             tag("time"),
-            tag("tri"),
             tag("triand"),
             tag("trior"),
             tag("trireg"),
             tag("tri0"),
             tag("tri1"),
+            tag("tri"),
             tag("wand"),
             tag("wire"),
             tag("wor"),
@@ -180,6 +181,10 @@ pub fn variable_id(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, take_until(" "), multispace0)(s)
 }
 
+pub fn variable_idx(s: &str) -> IResult<&str, u8> {
+    map_res(digit0, |s: &str| s.parse::<u8>())(s)
+}
+
 pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
     delimited(
         tag("["),
@@ -188,13 +193,15 @@ pub fn variable_vector(s: &str) -> IResult<&str, (u8, u8)> {
     )(s)
 }
 
-pub fn variable_idx(s: &str) -> IResult<&str, u8> {
-    map_res(digit0, |s: &str| s.parse::<u8>())(s)
-}
-pub fn variable_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+pub fn variable_vec_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
     delimited(multispace0, pair(variable_id, variable_vector), multispace0)(s)
 }
 
+pub fn variable_sca_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
+    map(delimited(multispace0, variable_id, multispace0), |s| {
+        (s, (0, 0))
+    })(s)
+}
 pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
     map(
         tuple((
@@ -202,15 +209,23 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
             variable_type,
             variable_bw,
             variable_id,
-            variable_id,
-            variable_vector,
+            // variable_id,
+            // variable_vector,
+            alt((variable_vec_ref, variable_sca_ref)),
             end_kw,
         )),
-        |(_, var_type, bw, id, refer, _, _)| Var {
-            var_type,
-            bw,
-            id,
-            refer,
+        |(_, var_type, bw, id, refer, _)| {
+            let res = Var {
+                var_type,
+                bw,
+                id,
+                refer: refer.0,
+                idx: refer.1,
+            };
+            if res.bw > 1 {
+                println!("bw > 1");
+            }
+            res
         },
     )(s)
 }
@@ -271,6 +286,76 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_comm_delc_kw() {
+        assert_eq!(comm_delc_kw("$comment"), Ok(("", "$comment")),);
+        assert_eq!(
+            comm_delc_kw("\r\n  \t $comment\r\n \t  "),
+            Ok(("", "$comment")),
+        );
+    }
+
+    #[test]
+    fn test_dat_delc_kw() {
+        assert_eq!(dat_decl_kw("$date"), Ok(("", "$date")),);
+        assert_eq!(dat_decl_kw("\r\n  \t $date\r\n \t  "), Ok(("", "$date")),);
+    }
+
+    #[test]
+    fn test_enddef_delc_kw() {
+        assert_eq!(
+            enddef_decl_kw("$enddefinitions"),
+            Ok(("", "$enddefinitions")),
+        );
+
+        assert_eq!(
+            enddef_decl_kw("\r\n  \t $enddefinitions\r\n \t  "),
+            Ok(("", "$enddefinitions")),
+        );
+    }
+
+    #[test]
+    fn test_scope_delc_kw() {
+        assert_eq!(scope_decl_kw("$scope"), Ok(("", "$scope")),);
+        assert_eq!(
+            scope_decl_kw("\r\n  \t $scope\r\n \t  "),
+            Ok(("", "$scope")),
+        );
+    }
+
+    #[test]
+    fn test_tsc_delc_kw() {
+        assert_eq!(tsc_decl_kw("$timescale"), Ok(("", "$timescale")),);
+        assert_eq!(
+            tsc_decl_kw("\r\n  \t $timescale\r\n \t  "),
+            Ok(("", "$timescale")),
+        );
+    }
+
+    #[test]
+    fn test_usc_delc_kw() {
+        assert_eq!(usc_decl_kw("$upscope"), Ok(("", "$upscope")),);
+        assert_eq!(
+            usc_decl_kw("\r\n  \t $upscope\r\n \t  "),
+            Ok(("", "$upscope")),
+        );
+    }
+
+    #[test]
+    fn test_var_delc_kw() {
+        assert_eq!(var_decl_kw("$var"), Ok(("", "$var")),);
+        assert_eq!(var_decl_kw("\r\n  \t $var\r\n \t  "), Ok(("", "$var")),);
+    }
+
+    #[test]
+    fn test_ver_delc_kw() {
+        assert_eq!(ver_decl_kw("$version"), Ok(("", "$version")),);
+        assert_eq!(
+            ver_decl_kw("\r\n  \t $version\r\n \t  "),
+            Ok(("", "$version")),
+        );
+    }
+
+    #[test]
     fn test_comm_decl_cmd() {
         assert_eq!(
             comm_decl_cmd("$comment This is a single-line comment    $end"),
@@ -289,16 +374,84 @@ mod test {
     }
 
     #[test]
-    fn test_enddef() {
+    fn test_dat_decl_cmd() {
+        assert_eq!(
+            dat_decl_cmd("$date Mon Feb 22 19:49:29 2021    $end"),
+            Ok(("", "Mon Feb 22 19:49:29 2021")),
+        );
+        assert_eq!(
+            dat_decl_cmd("$date Mon Feb 22 19:49:29 2021\r\n    $end\r\n"),
+            Ok(("", "Mon Feb 22 19:49:29 2021")),
+        );
+    }
+
+    #[test]
+    fn test_enddef_decl_cmd() {
         assert_eq!(enddef_decl_cmd("$enddefinitions $end"), Ok(("", "")));
         assert_eq!(
             enddef_decl_cmd("$enddefinitions\r\n     $end"),
             Ok(("", ""))
         )
     }
+    #[test]
+    fn test_scope_type() {
+        assert_eq!(scope_type("begin"), Ok(("", "begin")));
+        assert_eq!(scope_type("fork\r\n     "), Ok(("", "fork")));
+        assert_eq!(scope_type("function\r\n     "), Ok(("", "function")));
+        assert_eq!(scope_type("module\r\n   "), Ok(("", "module")));
+        assert_eq!(scope_type("task \r\n   \t"), Ok(("", "task")));
+    }
 
     #[test]
-    fn test_tsc() {
+    fn test_scope_id() {
+        assert_eq!(scope_id("tinyriscv_soc_tb "), Ok(("", "tinyriscv_soc_tb")));
+        assert_eq!(scope_id("hello \r\n     "), Ok(("", "hello")));
+        assert_eq!(scope_id(" top \r\n     "), Ok(("", "top")));
+    }
+
+    #[test]
+    fn test_scope_decl_cmd() {
+        assert_eq!(
+            scope_decl_cmd("$scope module tinyriscv_soc_tb $end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
+                }
+            ))
+        );
+
+        assert_eq!(
+            scope_decl_cmd("$scope\r\n\t module tinyriscv_soc_tb \r\n$end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "module",
+                    sc_id: "tinyriscv_soc_tb"
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_tsc_num() {
+        assert_eq!(tsc_num("1 "), Ok((" ", 1)));
+        assert_eq!(tsc_num("10 \r\n     "), Ok((" \r\n     ", 10)));
+        assert_eq!(tsc_num("100 \r\n     "), Ok((" \r\n     ", 100)));
+    }
+
+    #[test]
+    fn test_tsc_unit() {
+        assert_eq!(tsc_unit("s "), Ok(("", "s")));
+        assert_eq!(tsc_unit("ms \r\n     "), Ok(("", "ms")));
+        assert_eq!(tsc_unit("us \r\n     "), Ok(("", "us")));
+        assert_eq!(tsc_unit(" ps \r\n     "), Ok(("", "ps")));
+        assert_eq!(tsc_unit("\r\n fs \r\n     "), Ok(("", "fs")));
+    }
+
+    #[test]
+    fn test_tsc_decl_cmd() {
         assert_eq!(
             tsc_decl_cmd("$timescale 10ps $end"),
             Ok((
@@ -316,6 +469,133 @@ mod test {
         );
     }
 
+    #[test]
+    fn test_usc_decl_cmd() {
+        assert_eq!(usc_decl_cmd("$upscope $end"), Ok(("", "")),);
+        assert_eq!(
+            usc_decl_cmd("\r\n  \t $upscope   $end\r\n \t  "),
+            Ok(("", "")),
+        );
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_variable_type() {
+        assert_eq!(variable_type("event "), Ok(("", "event")));
+        assert_eq!(variable_type("integer \r\n     "), Ok(("", "integer")));
+        assert_eq!(variable_type("parameter \r\n     "), Ok(("", "parameter")));
+        assert_eq!(variable_type(" real \r\n     "), Ok(("", "real")));
+        assert_eq!(variable_type("\r\n realtime \r\n     "), Ok(("", "realtime")));
+        assert_eq!(variable_type("\r\n  \r reg \r\n     "), Ok(("", "reg")));
+        assert_eq!(variable_type("\r\n  \nsupply0 \r\n     "), Ok(("", "supply0")));
+        assert_eq!(variable_type("\r\n  \nsupply1 \r\n     "), Ok(("", "supply1")));
+        assert_eq!(variable_type("\r\n  time \r\n     "), Ok(("", "time")));
+        assert_eq!(variable_type("\r\n  tri\t \r\n     "), Ok(("", "tri")));
+        assert_eq!(variable_type("\r\n  triand\n\t \r\n     "), Ok(("", "triand")));
+        assert_eq!(variable_type("\r\n  trior \n\t \r\n     "), Ok(("", "trior")));
+        assert_eq!(variable_type("\r\n trireg \n\t \r\n     "), Ok(("", "trireg")));
+        assert_eq!(variable_type("\r\n tri0 \n\t \r\n     "), Ok(("", "tri0")));
+        assert_eq!(variable_type("\r\n tri1 \n\t \r\n     "), Ok(("", "tri1")));
+        assert_eq!(variable_type("\r\n wand \n\t  \r\n     "), Ok(("", "wand")));
+        assert_eq!(variable_type("\r\n wire  \n\t  \r\n     "), Ok(("", "wire")));
+        assert_eq!(variable_type("\r\n wor    \n\t  \r\n     "), Ok(("", "wor")));
+    }
+
+    #[test]
+    fn test_variable_bw() {
+        assert_eq!(variable_bw("1 "), Ok((" ", 1)));
+        assert_eq!(variable_bw("10 \r\n     "), Ok((" \r\n     ", 10)));
+        assert_eq!(variable_bw("100 \r\n     "), Ok((" \r\n     ", 100)));
+    }
+
+    #[test]
+    fn test_variable_id() {
+        assert_eq!(variable_id("! "), Ok(("", "!")));
+        assert_eq!(variable_id("% \r\n     "), Ok(("", "%")));
+        assert_eq!(variable_id("4 \r\n     "), Ok(("", "4")));
+        assert_eq!(variable_id("@ \r\n   "), Ok(("", "@")));
+        assert_eq!(variable_id("] \r\n   \t"), Ok(("", "]")));
+    }
+
+    #[test]
+    fn test_variable_idx() {
+        assert_eq!(variable_idx("1 "), Ok((" ", 1)));
+        assert_eq!(variable_idx("23 \r\n     "), Ok((" \r\n     ", 23)));
+        assert_eq!(variable_idx("134 \r\n     "), Ok((" \r\n     ", 134)));
+    }
+
+    #[test]
+    fn test_variable_vector() {
+        assert_eq!(variable_vector("[13:0] "), Ok((" ", (13, 0))));
+        assert_eq!(variable_vector("[31:0] \r"), Ok((" \r", (31, 0))));
+        assert_eq!(variable_vector("[0:0] \r"), Ok((" \r", (0, 0))));
+    }
+
+    #[test]
+    fn test_variable_ref() {
+        assert_eq!(variable_vec_ref(" r [31:0] "), Ok(("", ("r", (31, 0)))));
+        assert_eq!(variable_vec_ref(" ab [0:0] "), Ok(("", ("ab", (0, 0)))));
+        assert_eq!(
+            variable_vec_ref("\r\n ab [0:0]\r\n "),
+            Ok(("", ("ab", (0, 0))))
+        );
+        // assert_eq!(variable_vec_ref("\r\n rst \r\n "), Ok(("", ("rst", (0, 0)))));
+    }
+
+    #[test]
+    fn test_variable_sca_ref() {
+        assert_eq!(variable_sca_ref("clk "), Ok(("", ("clk", (0, 0)))));
+        assert_eq!(
+            variable_sca_ref("\r\n rst \r\n "),
+            Ok(("", ("rst", (0, 0))))
+        );
+    }
+
+    #[test]
+    fn test_var_decl_cmd() {
+        assert_eq!(
+            var_decl_cmd("$var wire 32 ! x26 [31:0] $end"),
+            Ok((
+                "",
+                Var {
+                    var_type: "wire",
+                    bw: 32,
+                    id: "!",
+                    refer: "x26",
+                    idx: (31, 0),
+                }
+            ))
+        );
+
+        assert_eq!(
+            var_decl_cmd("$var reg 1 $ clk $end"),
+            Ok((
+                "",
+                Var {
+                    var_type: "reg",
+                    bw: 1,
+                    id: "$",
+                    refer: "clk",
+                    idx: (0, 0),
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_ver_decl_cmd() {
+        assert_eq!(ver_decl_cmd("$version hello $end"), Ok(("", "hello")),);
+        assert_eq!(
+            ver_decl_cmd("$version\r\n\t Icarus Verilog\r\n$end"),
+            Ok(("", "Icarus Verilog")),
+        );
+    }
+
+    #[test]
+    fn test_end_kw() {
+        assert_eq!(end_kw("$end"), Ok(("", "$end")));
+        assert_eq!(end_kw("\r\n $end\t "), Ok(("", "$end")));
+    }
     // #[test]
     // fn test_header() {
     //     assert_eq!(
@@ -330,29 +610,4 @@ mod test {
     //         ))
     //     );
     // }
-
-    #[test]
-    fn test_scope() {
-        assert_eq!(
-            scope_decl_cmd("$scope_decl_cmd module tinyriscv_soc_tb $end"),
-            Ok((
-                "",
-                Scope {
-                    sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
-                }
-            ))
-        );
-
-        assert_eq!(
-            scope_decl_cmd("$scope_decl_cmd\r\n\t module tinyriscv_soc_tb \r\n$end"),
-            Ok((
-                "",
-                Scope {
-                    sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
-                }
-            ))
-        );
-    }
 }
