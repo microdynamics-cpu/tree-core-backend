@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use treecore_parser::vcd::dat_decl_cmd;
+use treecore_parser::vcd::{header, Header, TimeScale};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -10,7 +10,14 @@ fn main() {
     // println!("With text:\n{}", contents);
 
     assert_eq!(
-        dat_decl_cmd(contents.as_str()),
-        Ok(("", "Mon Feb 22 19:49:29 2021")),
+        header(contents.as_str()),
+        Ok((
+            "",
+            Header {
+                dat: "Mon Feb 22 19:49:29 2021",
+                ver: "Icarus Verilog",
+                tsc: TimeScale { num: 1, unit: "ps" },
+            }
+        ))
     );
 }

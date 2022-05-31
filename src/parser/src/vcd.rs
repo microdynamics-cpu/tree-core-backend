@@ -24,6 +24,7 @@ pub struct Header<'a> {
 pub struct Scope<'a> {
     pub sc_type: &'a str,
     pub sc_id: &'a str,
+    pub var_list: Vec<Var<'a>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,12 +36,11 @@ pub struct Var<'a> {
     pub idx: (u8, u8),
 }
 
+pub struct VcdMeta<'a> {
+    pub hdr: Header<'a>,
+    pub sc_list: Vec<Scope<'a>>,
+}
 // ref to the verilog-std-1364-2005 LRM
-// main entry
-// pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
-
-// }
-
 // declaration_keyword
 pub fn comm_delc_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$comment"), multispace0)(s)
@@ -112,7 +112,11 @@ pub fn scope_id(s: &str) -> IResult<&str, &str> {
 pub fn scope_decl_cmd(s: &str) -> IResult<&str, Scope> {
     map(
         tuple((scope_decl_kw, scope_type, scope_id, end_kw)),
-        |(_, sc_type, sc_id, _)| Scope { sc_type, sc_id },
+        |(_, sc_type, sc_id, _)| Scope {
+            sc_type,
+            sc_id,
+            var_list: Vec::new(),
+        },
     )(s)
 }
 
@@ -277,6 +281,11 @@ pub fn header(s: &str) -> IResult<&str, Header> {
     )(s)
 }
 
+// main entry
+// pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
+
+// }
+
 #[cfg(test)]
 mod unit_test {
     use super::*;
@@ -413,7 +422,8 @@ mod unit_test {
                 "",
                 Scope {
                     sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
+                    sc_id: "tinyriscv_soc_tb",
+                    var_list: Vec::new(),
                 }
             ))
         );
@@ -424,7 +434,8 @@ mod unit_test {
                 "",
                 Scope {
                     sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
+                    sc_id: "tinyriscv_soc_tb",
+                    var_list: Vec::new(),
                 }
             ))
         );
