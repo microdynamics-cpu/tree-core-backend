@@ -282,7 +282,7 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
 // }
 
 #[cfg(test)]
-mod test {
+mod unit_test {
     use super::*;
 
     #[test]
@@ -610,4 +610,9 @@ mod test {
     //         ))
     //     );
     // }
+}
+
+#[cfg(test)]
+mod inter_test {
+    use super::*;
 }
