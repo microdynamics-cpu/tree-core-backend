@@ -17,7 +17,7 @@ pub struct TimeScale<'a> {
 pub struct Header<'a> {
     pub dat: &'a str,
     pub ver: &'a str,
-    pub tsc: &'a str,
+    pub tsc: TimeScale<'a>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -270,16 +270,12 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
-// pub fn tsc_decl_cmd(s: &str) -> IResult<&str, &str> {
-//     delimited(tsc_decl_kw, cmd_text, end_kw)(s)
-// }
-
-// pub fn header(s: &str) -> IResult<&str, Header> {
-//     map(
-//         tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
-//         |(dat, ver, tsc)| Header { dat, ver, tsc },
-//     )(s)
-// }
+pub fn header(s: &str) -> IResult<&str, Header> {
+    map(
+        tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
+        |(dat, ver, tsc)| Header { dat, ver, tsc },
+    )(s)
+}
 
 #[cfg(test)]
 mod unit_test {
@@ -596,18 +592,21 @@ mod unit_test {
         assert_eq!(end_kw("$end"), Ok(("", "$end")));
         assert_eq!(end_kw("\r\n $end\t "), Ok(("", "$end")));
     }
-    // #[test]
-    // fn test_header() {
-    //     assert_eq!(
-    //         header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
-    //         Ok((
-    //             "",
-    //             Header {
-    //                 dat: "Mon Feb 22 19:49:29 2021",
-    //                 ver: "Icarus Verilog",
-    //                 tsc: "1ps",
-    //             }
-    //         ))
-    //     );
-    // }
+    #[test]
+    fn test_header() {
+        assert_eq!(
+            header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
+            Ok((
+                "",
+                Header {
+                    dat: "Mon Feb 22 19:49:29 2021",
+                    ver: "Icarus Verilog",
+                    tsc: TimeScale {
+                        num: 1,
+                        unit: "ps",
+                    },
+                }
+            ))
+        );
+    }
 }
