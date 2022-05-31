@@ -611,8 +611,3 @@ mod unit_test {
     //     );
     // }
 }
-
-#[cfg(test)]
-mod inter_test {
-    use super::*;
-}
