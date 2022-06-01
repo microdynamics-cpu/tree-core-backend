@@ -39,6 +39,7 @@ pub struct Var<'a> {
 pub struct VcdMeta<'a> {
     pub hdr: Header<'a>,
     pub sc_list: Vec<Scope<'a>>,
+    pub rt_scope: u32,
 }
 // ref to the verilog-std-1364-2005 LRM
 // declaration_keyword
