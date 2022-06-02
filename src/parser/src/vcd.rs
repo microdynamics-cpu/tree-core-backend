@@ -3,8 +3,8 @@ use nom::{
     bytes::complete::{tag, take_until},
     character::complete::{digit0, digit1, multispace0},
     combinator::{map, map_res},
-    sequence::{delimited, pair, separated_pair, tuple},
     multi::many0,
+    sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
 
@@ -148,8 +148,15 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
     )(s)
 }
 
-pub fn usc_decl_cmd(s: &str) -> IResult<&str, &str> {
-    delimited(usc_decl_kw, multispace0, end_kw)(s)
+pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
+    // delimited(usc_decl_kw, multispace0, end_kw)(s)
+    map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
+        Scope {
+            sc_type: "none",
+            sc_id: "none",
+            var_list: Vec::new(),
+        }
+    })(s)
 }
 
 pub fn variable_type(s: &str) -> IResult<&str, &str> {
@@ -229,7 +236,7 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
                 idx: refer.1,
             };
             // if res.bw > 1 {
-                // println!("bw > 1");
+            // println!("bw > 1");
             // }
             res
         },
@@ -295,9 +302,20 @@ pub fn vcd_scope_multi(s: &str) -> IResult<&str, Vec<Scope>> {
     many0(vcd_scope)(s)
 }
 
+// pub fn vcd_def(s: &str) -> IResult<&str, &str> {
+// if scope cond: vcd_scope
+// else if uscope cond:
+// many0(alt((vcd_scope_multi, usc_decl_cmd)))(s)
+// }
+
 pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
     many0(var_decl_cmd)(s)
 }
+
+// pub fn vcd_body(s: &str) -> IResult<&str, &str> {
+
+// }
+
 // main entry
 // pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
 
@@ -495,10 +513,27 @@ mod unit_test {
 
     #[test]
     fn test_usc_decl_cmd() {
-        assert_eq!(usc_decl_cmd("$upscope $end"), Ok(("", "")),);
+        assert_eq!(
+            usc_decl_cmd("$upscope $end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "none",
+                    sc_id: "none",
+                    var_list: Vec::new(),
+                }
+            )),
+        );
         assert_eq!(
             usc_decl_cmd("\r\n  \t $upscope   $end\r\n \t  "),
-            Ok(("", "")),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "none",
+                    sc_id: "none",
+                    var_list: Vec::new(),
+                }
+            )),
         );
     }
 
