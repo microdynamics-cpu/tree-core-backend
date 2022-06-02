@@ -4,6 +4,7 @@ use nom::{
     character::complete::{digit0, digit1, multispace0},
     combinator::{map, map_res},
     sequence::{delimited, pair, separated_pair, tuple},
+    multi::many0,
     IResult,
 };
 
@@ -227,9 +228,9 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
                 refer: refer.0,
                 idx: refer.1,
             };
-            if res.bw > 1 {
-                println!("bw > 1");
-            }
+            // if res.bw > 1 {
+                // println!("bw > 1");
+            // }
             res
         },
     )(s)
@@ -275,13 +276,28 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
-pub fn header(s: &str) -> IResult<&str, Header> {
+pub fn vcd_header(s: &str) -> IResult<&str, Header> {
     map(
         tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
         |(dat, ver, tsc)| Header { dat, ver, tsc },
     )(s)
 }
 
+pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
+    map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
+        scope.var_list = var_list;
+        scope
+    })(s)
+}
+
+// scope upscope
+pub fn vcd_scope_multi(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(vcd_scope)(s)
+}
+
+pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
+    many0(var_decl_cmd)(s)
+}
 // main entry
 // pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
 
@@ -607,7 +623,7 @@ mod unit_test {
     #[test]
     fn test_header() {
         assert_eq!(
-            header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
+            vcd_header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
             Ok((
                 "",
                 Header {
