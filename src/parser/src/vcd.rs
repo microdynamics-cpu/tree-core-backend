@@ -149,11 +149,11 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
 }
 
 pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
-    // delimited(usc_decl_kw, multispace0, end_kw)(s)
     map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
+        println!("[upscope]");
         Scope {
-            sc_type: "none",
-            sc_id: "none",
+            sc_type: "no",
+            sc_id: "no",
             var_list: Vec::new(),
         }
     })(s)
@@ -292,6 +292,7 @@ pub fn vcd_header(s: &str) -> IResult<&str, Header> {
 
 pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
     map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
+        println!("[scope]");
         scope.var_list = var_list;
         scope
     })(s)
@@ -302,11 +303,13 @@ pub fn vcd_scope_multi(s: &str) -> IResult<&str, Vec<Scope>> {
     many0(vcd_scope)(s)
 }
 
-// pub fn vcd_def(s: &str) -> IResult<&str, &str> {
-// if scope cond: vcd_scope
-// else if uscope cond:
-// many0(alt((vcd_scope_multi, usc_decl_cmd)))(s)
-// }
+pub fn vcd_end_multi(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(usc_decl_cmd)(s)
+}
+
+pub fn vcd_def(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(alt((vcd_scope, usc_decl_cmd)))(s)
+}
 
 pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
     many0(var_decl_cmd)(s)
@@ -518,8 +521,8 @@ mod unit_test {
             Ok((
                 "",
                 Scope {
-                    sc_type: "none",
-                    sc_id: "none",
+                    sc_type: "no",
+                    sc_id: "no",
                     var_list: Vec::new(),
                 }
             )),
@@ -529,8 +532,8 @@ mod unit_test {
             Ok((
                 "",
                 Scope {
-                    sc_type: "none",
-                    sc_id: "none",
+                    sc_type: "no",
+                    sc_id: "no",
                     var_list: Vec::new(),
                 }
             )),
