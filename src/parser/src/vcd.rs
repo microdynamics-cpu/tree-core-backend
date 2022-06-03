@@ -37,6 +37,7 @@ pub struct Var<'a> {
     pub idx: (u8, u8),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VcdMeta<'a> {
     pub hdr: Header<'a>,
     pub sc_list: Vec<Scope<'a>>,
@@ -320,9 +321,16 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
 // }
 
 // main entry
-// pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
-
-// }
+pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
+    map(
+        tuple((vcd_header, vcd_def, enddef_decl_cmd)),
+        |(hdr, sc_list, _)| VcdMeta {
+            hdr,
+            sc_list,
+            rt_scope: 0u32,
+        },
+    )(s)
+}
 
 #[cfg(test)]
 mod unit_test {
