@@ -1,6 +1,6 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0},
     combinator::{map, map_res},
     multi::many0,
@@ -35,6 +35,12 @@ pub struct Var<'a> {
     pub id: &'a str,
     pub refer: &'a str,
     pub idx: (u8, u8),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Val<'a> {
+    pub val: &'a str,
+    pub id: &'a str,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -192,7 +198,11 @@ pub fn variable_bw(s: &str) -> IResult<&str, u8> {
 }
 
 pub fn variable_id(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, take_until(" "), multispace0)(s)
+    delimited(
+        multispace0,
+        alt((take_until(" "), take_until("\r\n"))),
+        multispace0,
+    )(s)
 }
 
 pub fn variable_idx(s: &str) -> IResult<&str, u8> {
@@ -223,8 +233,6 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
             variable_type,
             variable_bw,
             variable_id,
-            // variable_id,
-            // variable_vector,
             alt((variable_vec_ref, variable_sca_ref)),
             end_kw,
         )),
@@ -284,12 +292,47 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
+// NOTE: no test
+pub fn simu_kw(s: &str) -> IResult<&str, &str> {
+    alt((
+        dumpall_simu_kw,
+        dumpoff_simu_kw,
+        dumpon_simu_kw,
+        dumpvars_simu_kw,
+    ))(s)
+}
+
 pub fn simu_time_val(s: &str) -> IResult<&str, u32> {
     map_res(digit1, |s: &str| s.parse::<u32>())(s)
 }
 
 pub fn simu_time(s: &str) -> IResult<&str, u32> {
     map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
+}
+
+// NOTE: no test
+// pub fn val_chg(s: &str) -> IResult<&str, Val> {
+// alt((sec_val_chg, vec_val_chg))(s)
+// }
+
+pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(tuple((sec_val, variable_id)), |(val, id)| Val { val, id })(s)
+}
+
+// NOTE: no test
+pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(
+        tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
+        |(_ch, val, id)| Val { val, id },
+    )(s)
+}
+
+pub fn sec_val(s: &str) -> IResult<&str, &str> {
+    is_a("01xXzZ")(s)
+}
+
+pub fn vec_val(s: &str) -> IResult<&str, &str> {
+    is_a("bBrR")(s)
 }
 
 // high level parser
@@ -594,6 +637,7 @@ mod unit_test {
         assert_eq!(variable_id("4 \r\n     "), Ok(("", "4")));
         assert_eq!(variable_id("@ \r\n   "), Ok(("", "@")));
         assert_eq!(variable_id("] \r\n   \t"), Ok(("", "]")));
+        assert_eq!(variable_id("z@\r\n"), Ok(("", "z@")));
     }
 
     #[test]
@@ -684,6 +728,63 @@ mod unit_test {
     #[test]
     fn test_simu_time() {
         assert_eq!(simu_time("#1234"), Ok(("", 1234u32)));
+    }
+
+    #[test]
+    fn test_sec_val_chg() {
+        assert_eq!(
+            sec_val_chg("1#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: "1",
+                    id: "#%"
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vec_val_chg() {
+        assert_eq!(
+            vec_val_chg("b101011#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: "101011",
+                    id: "#%"
+                }
+            ))
+        );
+
+        assert_eq!(
+            vec_val_chg("bx#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: "x",
+                    id: "#%"
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_sec_val() {
+        assert_eq!(sec_val("0"), Ok(("", "0")));
+        assert_eq!(sec_val("1"), Ok(("", "1")));
+        assert_eq!(sec_val("x"), Ok(("", "x")));
+        assert_eq!(sec_val("X"), Ok(("", "X")));
+        assert_eq!(sec_val("z"), Ok(("", "z")));
+        assert_eq!(sec_val("Z"), Ok(("", "Z")));
+    }
+
+    #[test]
+    fn test_vec_val() {
+        assert_eq!(vec_val("b"), Ok(("", "b")));
+        assert_eq!(vec_val("B"), Ok(("", "B")));
+        assert_eq!(vec_val("r"), Ok(("", "r")));
+        assert_eq!(vec_val("R"), Ok(("", "R")));
     }
 
     #[test]
