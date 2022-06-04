@@ -284,6 +284,15 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
+pub fn simu_time_val(s: &str) -> IResult<&str, u32> {
+    map_res(digit1, |s: &str| s.parse::<u32>())(s)
+}
+
+pub fn simu_time(s: &str) -> IResult<&str, u32> {
+    map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
+}
+
+// high level parser
 pub fn vcd_header(s: &str) -> IResult<&str, Header> {
     map(
         tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
@@ -666,6 +675,17 @@ mod unit_test {
         assert_eq!(end_kw("$end"), Ok(("", "$end")));
         assert_eq!(end_kw("\r\n $end\t "), Ok(("", "$end")));
     }
+
+    #[test]
+    fn test_simu_time_val() {
+        assert_eq!(simu_time_val("1000"), Ok(("", 1000u32)));
+    }
+
+    #[test]
+    fn test_simu_time() {
+        assert_eq!(simu_time("#1234"), Ok(("", 1234u32)));
+    }
+
     #[test]
     fn test_header() {
         assert_eq!(
