@@ -369,7 +369,9 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
 }
 
 // pub fn vcd_body(s: &str) -> IResult<&str, &str> {
-
+// map(tuple((dumpvars_simu_kw,)), |()| {
+//
+// })(s)
 // }
 
 // main entry
@@ -732,16 +734,7 @@ mod unit_test {
 
     #[test]
     fn test_sec_val_chg() {
-        assert_eq!(
-            sec_val_chg("1#%\r\n"),
-            Ok((
-                "",
-                Val {
-                    val: "1",
-                    id: "#%"
-                }
-            ))
-        );
+        assert_eq!(sec_val_chg("1#%\r\n"), Ok(("", Val { val: "1", id: "#%" })));
     }
 
     #[test]
@@ -759,13 +752,7 @@ mod unit_test {
 
         assert_eq!(
             vec_val_chg("bx#%\r\n"),
-            Ok((
-                "",
-                Val {
-                    val: "x",
-                    id: "#%"
-                }
-            ))
+            Ok(("", Val { val: "x", id: "#%" }))
         );
     }
 
