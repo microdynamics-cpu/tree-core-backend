@@ -1,8 +1,9 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0},
     combinator::{map, map_res},
+    multi::many0,
     sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
@@ -17,13 +18,14 @@ pub struct TimeScale<'a> {
 pub struct Header<'a> {
     pub dat: &'a str,
     pub ver: &'a str,
-    pub tsc: &'a str,
+    pub tsc: TimeScale<'a>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Scope<'a> {
     pub sc_type: &'a str,
     pub sc_id: &'a str,
+    pub var_list: Vec<Var<'a>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,12 +37,19 @@ pub struct Var<'a> {
     pub idx: (u8, u8),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Val<'a> {
+    pub val: &'a str,
+    pub id: &'a str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VcdMeta<'a> {
+    pub hdr: Header<'a>,
+    pub sc_list: Vec<Scope<'a>>,
+    pub rt_scope: u32,
+}
 // ref to the verilog-std-1364-2005 LRM
-// main entry
-// pub fn value_change_dump_def(s: &str) -> IResult<&str, &str> {
-
-// }
-
 // declaration_keyword
 pub fn comm_delc_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$comment"), multispace0)(s)
@@ -112,7 +121,11 @@ pub fn scope_id(s: &str) -> IResult<&str, &str> {
 pub fn scope_decl_cmd(s: &str) -> IResult<&str, Scope> {
     map(
         tuple((scope_decl_kw, scope_type, scope_id, end_kw)),
-        |(_, sc_type, sc_id, _)| Scope { sc_type, sc_id },
+        |(_, sc_type, sc_id, _)| Scope {
+            sc_type,
+            sc_id,
+            var_list: Vec::new(),
+        },
     )(s)
 }
 
@@ -142,8 +155,15 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
     )(s)
 }
 
-pub fn usc_decl_cmd(s: &str) -> IResult<&str, &str> {
-    delimited(usc_decl_kw, multispace0, end_kw)(s)
+pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
+    map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
+        println!("[upscope]");
+        Scope {
+            sc_type: "no",
+            sc_id: "no",
+            var_list: Vec::new(),
+        }
+    })(s)
 }
 
 pub fn variable_type(s: &str) -> IResult<&str, &str> {
@@ -178,7 +198,11 @@ pub fn variable_bw(s: &str) -> IResult<&str, u8> {
 }
 
 pub fn variable_id(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, take_until(" "), multispace0)(s)
+    delimited(
+        multispace0,
+        alt((take_until(" "), take_until("\r\n"))),
+        multispace0,
+    )(s)
 }
 
 pub fn variable_idx(s: &str) -> IResult<&str, u8> {
@@ -209,8 +233,6 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
             variable_type,
             variable_bw,
             variable_id,
-            // variable_id,
-            // variable_vector,
             alt((variable_vec_ref, variable_sca_ref)),
             end_kw,
         )),
@@ -222,9 +244,9 @@ pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
                 refer: refer.0,
                 idx: refer.1,
             };
-            if res.bw > 1 {
-                println!("bw > 1");
-            }
+            // if res.bw > 1 {
+            // println!("bw > 1");
+            // }
             res
         },
     )(s)
@@ -270,19 +292,102 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
-// pub fn tsc_decl_cmd(s: &str) -> IResult<&str, &str> {
-//     delimited(tsc_decl_kw, cmd_text, end_kw)(s)
+// NOTE: no test
+pub fn simu_kw(s: &str) -> IResult<&str, &str> {
+    alt((
+        dumpall_simu_kw,
+        dumpoff_simu_kw,
+        dumpon_simu_kw,
+        dumpvars_simu_kw,
+    ))(s)
+}
+
+pub fn simu_time_val(s: &str) -> IResult<&str, u32> {
+    map_res(digit1, |s: &str| s.parse::<u32>())(s)
+}
+
+pub fn simu_time(s: &str) -> IResult<&str, u32> {
+    map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
+}
+
+// NOTE: no test
+// pub fn val_chg(s: &str) -> IResult<&str, Val> {
+// alt((sec_val_chg, vec_val_chg))(s)
 // }
 
-// pub fn header(s: &str) -> IResult<&str, Header> {
-//     map(
-//         tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
-//         |(dat, ver, tsc)| Header { dat, ver, tsc },
-//     )(s)
+pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(tuple((sec_val, variable_id)), |(val, id)| Val { val, id })(s)
+}
+
+// NOTE: no test
+pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(
+        tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
+        |(_ch, val, id)| Val { val, id },
+    )(s)
+}
+
+pub fn sec_val(s: &str) -> IResult<&str, &str> {
+    is_a("01xXzZ")(s)
+}
+
+pub fn vec_val(s: &str) -> IResult<&str, &str> {
+    is_a("bBrR")(s)
+}
+
+// high level parser
+pub fn vcd_header(s: &str) -> IResult<&str, Header> {
+    map(
+        tuple((dat_decl_cmd, ver_decl_cmd, tsc_decl_cmd)),
+        |(dat, ver, tsc)| Header { dat, ver, tsc },
+    )(s)
+}
+
+pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
+    map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
+        println!("[scope]");
+        scope.var_list = var_list;
+        scope
+    })(s)
+}
+
+// scope upscope
+pub fn vcd_scope_multi(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(vcd_scope)(s)
+}
+
+pub fn vcd_end_multi(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(usc_decl_cmd)(s)
+}
+
+pub fn vcd_def(s: &str) -> IResult<&str, Vec<Scope>> {
+    many0(alt((vcd_scope, usc_decl_cmd)))(s)
+}
+
+pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
+    many0(var_decl_cmd)(s)
+}
+
+// pub fn vcd_body(s: &str) -> IResult<&str, &str> {
+// map(tuple((dumpvars_simu_kw,)), |()| {
+//
+// })(s)
 // }
+
+// main entry
+pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
+    map(
+        tuple((vcd_header, vcd_def, enddef_decl_cmd)),
+        |(hdr, sc_list, _)| VcdMeta {
+            hdr,
+            sc_list,
+            rt_scope: 0u32,
+        },
+    )(s)
+}
 
 #[cfg(test)]
-mod test {
+mod unit_test {
     use super::*;
 
     #[test]
@@ -417,7 +522,8 @@ mod test {
                 "",
                 Scope {
                     sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
+                    sc_id: "tinyriscv_soc_tb",
+                    var_list: Vec::new(),
                 }
             ))
         );
@@ -428,7 +534,8 @@ mod test {
                 "",
                 Scope {
                     sc_type: "module",
-                    sc_id: "tinyriscv_soc_tb"
+                    sc_id: "tinyriscv_soc_tb",
+                    var_list: Vec::new(),
                 }
             ))
         );
@@ -471,10 +578,27 @@ mod test {
 
     #[test]
     fn test_usc_decl_cmd() {
-        assert_eq!(usc_decl_cmd("$upscope $end"), Ok(("", "")),);
+        assert_eq!(
+            usc_decl_cmd("$upscope $end"),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "no",
+                    sc_id: "no",
+                    var_list: Vec::new(),
+                }
+            )),
+        );
         assert_eq!(
             usc_decl_cmd("\r\n  \t $upscope   $end\r\n \t  "),
-            Ok(("", "")),
+            Ok((
+                "",
+                Scope {
+                    sc_type: "no",
+                    sc_id: "no",
+                    var_list: Vec::new(),
+                }
+            )),
         );
     }
 
@@ -515,6 +639,7 @@ mod test {
         assert_eq!(variable_id("4 \r\n     "), Ok(("", "4")));
         assert_eq!(variable_id("@ \r\n   "), Ok(("", "@")));
         assert_eq!(variable_id("] \r\n   \t"), Ok(("", "]")));
+        assert_eq!(variable_id("z@\r\n"), Ok(("", "z@")));
     }
 
     #[test]
@@ -596,18 +721,74 @@ mod test {
         assert_eq!(end_kw("$end"), Ok(("", "$end")));
         assert_eq!(end_kw("\r\n $end\t "), Ok(("", "$end")));
     }
-    // #[test]
-    // fn test_header() {
-    //     assert_eq!(
-    //         header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
-    //         Ok((
-    //             "",
-    //             Header {
-    //                 dat: "Mon Feb 22 19:49:29 2021",
-    //                 ver: "Icarus Verilog",
-    //                 tsc: "1ps",
-    //             }
-    //         ))
-    //     );
-    // }
+
+    #[test]
+    fn test_simu_time_val() {
+        assert_eq!(simu_time_val("1000"), Ok(("", 1000u32)));
+    }
+
+    #[test]
+    fn test_simu_time() {
+        assert_eq!(simu_time("#1234"), Ok(("", 1234u32)));
+    }
+
+    #[test]
+    fn test_sec_val_chg() {
+        assert_eq!(sec_val_chg("1#%\r\n"), Ok(("", Val { val: "1", id: "#%" })));
+    }
+
+    #[test]
+    fn test_vec_val_chg() {
+        assert_eq!(
+            vec_val_chg("b101011#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: "101011",
+                    id: "#%"
+                }
+            ))
+        );
+
+        assert_eq!(
+            vec_val_chg("bx#%\r\n"),
+            Ok(("", Val { val: "x", id: "#%" }))
+        );
+    }
+
+    #[test]
+    fn test_sec_val() {
+        assert_eq!(sec_val("0"), Ok(("", "0")));
+        assert_eq!(sec_val("1"), Ok(("", "1")));
+        assert_eq!(sec_val("x"), Ok(("", "x")));
+        assert_eq!(sec_val("X"), Ok(("", "X")));
+        assert_eq!(sec_val("z"), Ok(("", "z")));
+        assert_eq!(sec_val("Z"), Ok(("", "Z")));
+    }
+
+    #[test]
+    fn test_vec_val() {
+        assert_eq!(vec_val("b"), Ok(("", "b")));
+        assert_eq!(vec_val("B"), Ok(("", "B")));
+        assert_eq!(vec_val("r"), Ok(("", "r")));
+        assert_eq!(vec_val("R"), Ok(("", "R")));
+    }
+
+    #[test]
+    fn test_header() {
+        assert_eq!(
+            vcd_header("$date\r\n\t Mon Feb 22 19:49:29 2021\r\n $end\r\n $version\r\n Icarus Verilog\r\n $end\r\n $timescale\r\n 1ps\r\n $end"),
+            Ok((
+                "",
+                Header {
+                    dat: "Mon Feb 22 19:49:29 2021",
+                    ver: "Icarus Verilog",
+                    tsc: TimeScale {
+                        num: 1,
+                        unit: "ps",
+                    },
+                }
+            ))
+        );
+    }
 }
