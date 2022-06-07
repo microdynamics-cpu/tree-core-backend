@@ -1,6 +1,6 @@
-use std::io::{stdin, stdout, Read, Write};
-use std::fs::File;
 use crate::core::Core;
+use std::fs::File;
+use std::io::{stdin, stdout, Read, Write};
 
 // like nemu
 // 0x00000297,  // auipc t0,0
@@ -18,16 +18,42 @@ enum CliCmd {
     TDB,
 }
 
+pub struct Cmd<'a> {
+    name: &'a str,
+    info: &'a str,
+}
+
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd_list: [&'a str; 5],
+    cmd_list: [Cmd<'a>; 5],
 }
 
 impl Cli<'_> {
     pub fn new() -> Self {
         Cli {
             prompt: ">>>",
-            cmd_list: ["help", "quit", "run", "load", "tdb"],
+            cmd_list: [
+                Cmd {
+                    name: "help",
+                    info: "help info",
+                },
+                Cmd {
+                    name: "quit",
+                    info: "quit from the interactive mode",
+                },
+                Cmd {
+                    name: "run",
+                    info: " run loaded binary program",
+                },
+                Cmd {
+                    name: "load",
+                    info: "load binary program",
+                },
+                Cmd {
+                    name: "tdb",
+                    info: " start a debugger",
+                },
+            ],
         }
     }
 
@@ -56,9 +82,9 @@ impl Cli<'_> {
 
         match first_args {
             Some(va) => {
-                for vb in self.cmd_list {
-                    if va == vb {
-                        return (self.map_cmd(vb), sec_args);
+                for vb in &self.cmd_list {
+                    if va == vb.name {
+                        return (self.map_cmd(vb.name), sec_args);
                     }
                 }
             }
@@ -81,7 +107,7 @@ impl Cli<'_> {
 
     fn print_help(&self) {
         for v in self.cmd_list.iter() {
-            println!("{}: {}", v, "placeholder");
+            println!("{}: {}", v.name, v.info);
         }
     }
 
@@ -116,7 +142,7 @@ impl Cli<'_> {
                         CliCmd::QUIT => break,
                         CliCmd::RUN => {
                             core.reset();
-                            core.run_simu(None, None);
+                            core.run_simu(None, None); // NOTE: now just for cmd binary
                         }
                         CliCmd::LOAD => match sec_cmd {
                             Some(v) => {
@@ -128,7 +154,7 @@ impl Cli<'_> {
                                             Ok(_v) => {
                                                 println!("\x1b[92m[Loading Success]...\x1b[0m");
                                                 core.load_bin_file(contents);
-                                            },
+                                            }
                                             Err(_e) => panic!(),
                                         }
                                     }
@@ -141,8 +167,7 @@ impl Cli<'_> {
                         },
                         CliCmd::TDB => {
                             println!("run tdb..."); // NOTE: no impl
-                        }
-                        // _ => panic!(),
+                        } // _ => panic!(),
                     }
                     input_dat.clear();
                 }
