@@ -16,6 +16,9 @@ enum CliCmd {
     RUN,
     LOAD,
     TDB,
+    TDB_C,
+    TDB_SI,
+    TDB_INFO,
 }
 
 pub struct Cmd<'a> {
@@ -25,7 +28,7 @@ pub struct Cmd<'a> {
 
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd_list: [Cmd<'a>; 5],
+    cmd_list: [Cmd<'a>; 6],
 }
 
 impl Cli<'_> {
@@ -53,6 +56,10 @@ impl Cli<'_> {
                     name: "tdb",
                     info: " start a debugger",
                 },
+                Cmd {
+                    name: "info",
+                    info: "[r|w]: print [register|watchpoint] info",
+                },
             ],
         }
     }
@@ -71,6 +78,7 @@ impl Cli<'_> {
             "run" => CliCmd::RUN,
             "load" => CliCmd::LOAD,
             "tdb" => CliCmd::TDB,
+            "info" => CliCmd::TDB_INFO,
             _ => panic!(),
         }
     }
@@ -167,7 +175,10 @@ impl Cli<'_> {
                         },
                         CliCmd::TDB => {
                             println!("run tdb..."); // NOTE: no impl
-                        } // _ => panic!(),
+                        }
+                        CliCmd::TDB_INFO => {
+                            println!("run info..."); // NOTE: no impl
+                        }
                     }
                     input_dat.clear();
                 }
