@@ -16,9 +16,9 @@ enum CliCmd {
     RUN,
     LOAD,
     TDB,
-    TDB_C,
-    TDB_SI,
-    TDB_INFO,
+    TDBC,
+    TDBSI,
+    TDBINFO,
 }
 
 pub struct Cmd<'a> {
@@ -78,7 +78,9 @@ impl Cli<'_> {
             "run" => CliCmd::RUN,
             "load" => CliCmd::LOAD,
             "tdb" => CliCmd::TDB,
-            "info" => CliCmd::TDB_INFO,
+            "c" => CliCmd::TDBC,
+            "si" => CliCmd::TDBSI,
+            "info" => CliCmd::TDBINFO,
             _ => panic!(),
         }
     }
@@ -176,7 +178,13 @@ impl Cli<'_> {
                         CliCmd::TDB => {
                             println!("run tdb..."); // NOTE: no impl
                         }
-                        CliCmd::TDB_INFO => {
+                        CliCmd::TDBC => {
+                            println!("run tdb r ..."); // NOTE: no impl
+                        }
+                        CliCmd::TDBSI => {
+                            println!("run tdb si ...") //  NOTE: no impl
+                        }
+                        CliCmd::TDBINFO => {
                             println!("run info..."); // NOTE: no impl
                         }
                     }
