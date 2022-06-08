@@ -29,6 +29,11 @@ const VGA_SYNC_ADDR_SIZE: u64 = 0x4u64;
 const VGA_FRAME_BUF_ADDR_START: u64 = 0xa0000000u64;
 const VGA_FRAME_BUF_ADDR_SIZE: u64 = 0x200000u64;
 
+pub enum RunMode {
+    Normal,
+    Debug(u64),
+}
+
 pub struct Core {
     regfile: Regfile,
     pc: u64,
@@ -98,48 +103,61 @@ impl Core {
         }
     }
 
+    pub fn check_end(&mut self) -> bool {
+        let end = match self.load_word(self.pc, true) {
+            Ok(w) => w == self.end_inst,
+            Err(_e) => panic!(),
+        };
+
+        if end {
+            match self.regfile.x[10] {
+                0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
+                _ => println!("\x1b[91mTest Failed\x1b[0m"),
+            };
+        }
+        end
+    }
+
     pub fn run_simu(
         &mut self,
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
         vga_tx: Option<mpsc::Sender<String>>,
+        run_mode: RunMode,
     ) {
         self.pc = self.start_addr;
 
-        loop {
-            match kdb_rx {
-                Some(ref v) => {
-                    match v.try_recv() {
-                        Ok(vv) => {
-                            // println!("Got: {:?}", v)
-                            self.dev.kdb.det(vv.0, vv.1);
+        match run_mode {
+            RunMode::Normal => {
+                loop {
+                    match kdb_rx {
+                        Some(ref v) => {
+                            match v.try_recv() {
+                                Ok(vv) => {
+                                    // println!("Got: {:?}", v)
+                                    self.dev.kdb.det(vv.0, vv.1);
+                                }
+                                Err(_e) => {}
+                            }
                         }
-                        Err(_e) => {}
+                        None => {}
+                    }
+                    // println!("val: {:08x}", self.load_word(self.pc));
+                    if self.check_end() {
+                        break;
+                    }
+                    self.tick();
+                    self.inst_num += 1;
+                    // log!(self.pc);
+                    if self.dev.vga.sync {
+                        match vga_tx {
+                            Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
+                            None => {}
+                        }
                     }
                 }
-                None => {}
             }
-            // println!("val: {:08x}", self.load_word(self.pc));
-            let end = match self.load_word(self.pc, true) {
-                Ok(w) => w == self.end_inst,
-                Err(_e) => panic!(),
-            };
-
-            if end {
-                match self.regfile.x[10] {
-                    0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
-                    _ => println!("\x1b[91mTest Failed\x1b[0m"),
-                };
-                break;
-            }
-
-            self.tick();
-            self.inst_num += 1;
-            // log!(self.pc);
-            if self.dev.vga.sync {
-                match vga_tx {
-                    Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
-                    None => {}
-                }
+            RunMode::Debug(v) => {
+                println!("v: {}", v);
             }
         }
     }

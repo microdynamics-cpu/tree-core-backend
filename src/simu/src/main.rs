@@ -5,7 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use treecore_simu::cli::Cli;
 use treecore_simu::config::XLen;
-use treecore_simu::core::Core;
+use treecore_simu::core::{Core, RunMode};
 use treecore_simu::web::web_setup;
 use treecore_simu::ws::ws_setup;
 
@@ -88,9 +88,9 @@ fn main() -> std::io::Result<()> {
         thread::spawn(move || {
             ws_setup(vga_rx);
         });
-        core.run_simu(Some(kdb_rx), Some(vga_tx));
+        core.run_simu(Some(kdb_rx), Some(vga_tx), RunMode::Normal);
     } else {
-        core.run_simu(None, None);
+        core.run_simu(None, None, RunMode::Normal);
     }
 
     Ok(())

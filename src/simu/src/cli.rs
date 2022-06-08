@@ -1,4 +1,4 @@
-use crate::core::Core;
+use crate::core::{Core, RunMode};
 use std::fs::File;
 use std::io::{stdin, stdout, Read, Write};
 
@@ -21,6 +21,7 @@ enum CliCmd {
     TDBINFO,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cmd<'a> {
     name: &'a str,
     info: &'a str,
@@ -28,7 +29,7 @@ pub struct Cmd<'a> {
 
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd_list: [Cmd<'a>; 6],
+    cmd_list: [Cmd<'a>; 8],
 }
 
 impl Cli<'_> {
@@ -55,6 +56,14 @@ impl Cli<'_> {
                 Cmd {
                     name: "tdb",
                     info: " start a debugger",
+                },
+                Cmd {
+                    name: "c",
+                    info: "[tdb] continue exec",
+                },
+                Cmd {
+                    name: "si",
+                    info: "[tdb] single step [N]",
                 },
                 Cmd {
                     name: "info",
@@ -152,7 +161,7 @@ impl Cli<'_> {
                         CliCmd::QUIT => break,
                         CliCmd::RUN => {
                             core.reset();
-                            core.run_simu(None, None); // NOTE: now just for cmd binary
+                            core.run_simu(None, None, RunMode::Normal); // NOTE: now just for cmd binary
                         }
                         CliCmd::LOAD => match sec_cmd {
                             Some(v) => {
@@ -182,7 +191,15 @@ impl Cli<'_> {
                             println!("run tdb r ..."); // NOTE: no impl
                         }
                         CliCmd::TDBSI => {
-                            println!("run tdb si ...") //  NOTE: no impl
+                            println!("run tdb si ..."); //  NOTE: no impl
+                            match sec_cmd {
+                                Some(v) => {
+                                    // println!("v: {}", v.parse::<u64>().unwrap());
+                                    let num = v.parse::<u64>().unwrap();
+                                    core.run_simu(None, None, RunMode::Debug(num));
+                                }
+                                _ => panic!(),
+                            }
                         }
                         CliCmd::TDBINFO => {
                             println!("run info..."); // NOTE: no impl
