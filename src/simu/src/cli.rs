@@ -197,11 +197,34 @@ impl Cli<'_> {
                                     let num = v.parse::<u64>().unwrap();
                                     core.run_simu(None, None, RunMode::Debug(num));
                                 }
-                                _ => panic!(),
+                                _ => println!(
+                                    "\x1b[93m[Warn] no support params, Type 'help' to get all legal cmds\x1b[0m"
+                                ),
                             }
                         }
                         CliCmd::TDBINFO => {
-                            println!("run info..."); // NOTE: no impl
+                            match sec_cmd {
+                                Some(v) => {
+                                    if v == "r" {
+                                        let mut count_vec: Vec<(&String, &u8)> = core.reg().alias.iter().collect();
+                                        count_vec.sort_by(|a, b| a.1.cmp(b.1));
+                                        let mut cnt = 1;
+                                        for v in count_vec.iter() {
+                                            if cnt % 4 == 0 || *v.1 == 31 {
+                                                println!("{} = {:016x}", v.0, core.reg().x[*v.1 as usize]);
+                                            } else {
+                                                print!("{} = {:016x} ", v.0, core.reg().x[*v.1 as usize]);
+                                            }
+                                            cnt += 1;
+                                        }
+                                    } else if v == "w" {
+                                        println!("w print");
+                                    }
+                                }
+                                _ => println!(
+                                    "\x1b[93m[Warn] no support params, Type 'help' to get all legal cmds\x1b[0m"
+                                ),
+                            }
                         }
                     }
                     input_dat.clear();

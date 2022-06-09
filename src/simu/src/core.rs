@@ -119,6 +119,16 @@ impl Core {
         end
     }
 
+    // for hide private regfile in core var
+    pub fn rtrace(&self, val: &str) {
+        rtrace(&self.regfile, val);
+    }
+
+    // for hide private regfile in core var
+    pub fn reg(&self) -> &Regfile {
+        &self.regfile
+    }
+
     pub fn run_simu(
         &mut self,
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
