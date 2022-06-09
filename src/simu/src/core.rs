@@ -82,7 +82,7 @@ impl Core {
     // NOTE: like 'new' oper, but dont reset mem
     pub fn reset(&mut self) {
         self.regfile.reset();
-        self.pc = 0u64;
+        self.pc = self.start_addr;
         self.ppn = 0u64;
         self.priv_mode = PrivMode::Machine;
         self.addr_mode = AddrMode::None;
@@ -101,6 +101,7 @@ impl Core {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
+        self.pc = self.start_addr;
     }
 
     pub fn check_end(&mut self) -> bool {
@@ -124,8 +125,7 @@ impl Core {
         vga_tx: Option<mpsc::Sender<String>>,
         run_mode: RunMode,
     ) {
-        self.pc = self.start_addr;
-
+        // self.pc = self.start_addr;
         match run_mode {
             RunMode::Normal => {
                 loop {
@@ -157,7 +157,14 @@ impl Core {
                 }
             }
             RunMode::Debug(v) => {
-                println!("v: {}", v);
+                // println!("v: {}", v);
+                let mut cnt = 0;
+                while cnt < v && !self.check_end() {
+                    self.tick();
+                    // log!(self.pc);
+                    self.inst_num += 1;
+                    cnt += 1;
+                }
             }
         }
     }

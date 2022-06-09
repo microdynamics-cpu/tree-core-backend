@@ -191,7 +191,6 @@ impl Cli<'_> {
                             println!("run tdb r ..."); // NOTE: no impl
                         }
                         CliCmd::TDBSI => {
-                            println!("run tdb si ..."); //  NOTE: no impl
                             match sec_cmd {
                                 Some(v) => {
                                     // println!("v: {}", v.parse::<u64>().unwrap());
