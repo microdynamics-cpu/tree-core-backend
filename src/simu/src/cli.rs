@@ -19,6 +19,7 @@ enum CliCmd {
     TDBC,
     TDBSI,
     TDBINFO,
+    TDBX,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,7 +30,7 @@ pub struct Cmd<'a> {
 
 pub struct Cli<'a> {
     prompt: &'a str,
-    cmd_list: [Cmd<'a>; 8],
+    cmd_list: [Cmd<'a>; 9],
 }
 
 impl Cli<'_> {
@@ -69,6 +70,10 @@ impl Cli<'_> {
                     name: "info",
                     info: "[r|w]: print [register|watchpoint] info",
                 },
+                Cmd {
+                    name: "x",
+                    info: "x N expr: print N words based on expr addr",
+                },
             ],
         }
     }
@@ -90,6 +95,7 @@ impl Cli<'_> {
             "c" => CliCmd::TDBC,
             "si" => CliCmd::TDBSI,
             "info" => CliCmd::TDBINFO,
+            "x" => CliCmd::TDBX,
             _ => panic!(),
         }
     }
@@ -225,6 +231,9 @@ impl Cli<'_> {
                                     "\x1b[93m[Warn] no support params, Type 'help' to get all legal cmds\x1b[0m"
                                 ),
                             }
+                        }
+                        CliCmd::TDBX => {
+                            println!("tdb x cmd: {:?}", sec_cmd);
                         }
                     }
                     input_dat.clear();
