@@ -9,7 +9,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, log, rtrace, FTrace};
+use crate::trace::{etrace, itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -48,18 +48,19 @@ pub struct Core {
     inst_num: u64,
     xlen: XLen,
     dbg_level: String,
-    trace_type: String,
+    trace_type: Vec<String>,
     ftr: FTrace,
 }
 
 impl Core {
     pub fn new(
         dbg_level: String,
-        trace_type: String,
+        trace_type: Vec<String>,
         xlen_val: XLen,
         start_addr: u64,
         end_inst: u32,
     ) -> Self {
+        println!("trace type: {:?}", trace_type);
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -127,6 +128,16 @@ impl Core {
     // for hide private regfile in core var
     pub fn reg(&self) -> &Regfile {
         &self.regfile
+    }
+
+    // HACK: can refactor to improve readability
+    fn trace_find(&self, val: &str) -> bool {
+        for v in &self.trace_type {
+            if *v == val.to_string() {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn run_simu(
@@ -198,12 +209,12 @@ impl Core {
         let inst = Decode::decode(self.pc, word, &self.xlen);
         match self.dbg_level.as_str() {
             "trace" => {
-                if self.trace_type == "itrace" {
+                if self.trace_find("itrace") {
                     itrace(self.pc, word, &inst, &[0x83000000u64, 0x88000490u64]);
                 }
             }
             "err" => {
-                if self.trace_type == "rtrace" {
+                if self.trace_find("rtrace") {
                     rtrace(&self.regfile, "a0");
                 }
             } // HACK:
@@ -213,6 +224,10 @@ impl Core {
     }
 
     fn handle_trap(&mut self, excpt: Exception) {
+        if self.dbg_level == "trace" && self.trace_find("etrace") {
+            etrace(&excpt);
+        }
+
         let cur_priv_encode = get_priv_encoding(&self.priv_mode) as u64;
         self.priv_mode =
             match (self.csr[csr::CSR_MEDELEG_ADDR as usize] >> get_exception_cause(&excpt)) & 1 {
@@ -860,7 +875,7 @@ impl Core {
                             self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
 
-                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                        if self.dbg_level == "trace" && self.trace_find("ftrace") {
                             match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
                                 Ok(()) => {}
                                 Err(_e) => panic!(),
@@ -1340,7 +1355,7 @@ impl Core {
                         }
                         let tmp_pc = self.pc;
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
-                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                        if self.dbg_level == "trace" && self.trace_find("ftrace") {
                             match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
                                 Ok(()) => {}
                                 Err(_e) => panic!(),

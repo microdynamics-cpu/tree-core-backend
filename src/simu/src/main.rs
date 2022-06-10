@@ -21,9 +21,9 @@ struct Args {
     #[clap(short, long, default_value = "none")]
     debug: String,
 
-    /// Trace
+    /// Trace type(sub cmd under Debug level)[itrace, rtrace, etrace, ftrace, none]
     #[clap(short, long, default_value = "none")]
-    trace: String,
+    trace: Vec<String>,
 
     /// Bit width of the processor
     #[clap(short, long, default_value = "x64")]
