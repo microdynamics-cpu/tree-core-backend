@@ -6,7 +6,7 @@ pub enum PrivMode {
     Machine,
 }
 
-
+#[derive(Debug)]
 pub enum ExceptionType {
     EnvCallFromMMode,
     EnvCallFromUMode,

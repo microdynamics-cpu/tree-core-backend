@@ -129,7 +129,7 @@ impl Vga {
     pub fn set_sync(&mut self, val: u8) -> bool {
         if self.cnt == 0 {
             self.sync = val == 1u8;
-            println!("self.sync: {}", self.sync);
+            // println!("self.sync: {}", self.sync);
         }
 
         self.cnt += 1;

@@ -9,7 +9,7 @@ use crate::privilege::{
     get_exception_cause, get_priv_encoding, Exception, ExceptionType, PrivMode,
 };
 use crate::regfile::Regfile;
-use crate::trace::{itrace, log, rtrace, FTrace};
+use crate::trace::{etrace, itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
@@ -29,6 +29,11 @@ const VGA_SYNC_ADDR_SIZE: u64 = 0x4u64;
 const VGA_FRAME_BUF_ADDR_START: u64 = 0xa0000000u64;
 const VGA_FRAME_BUF_ADDR_SIZE: u64 = 0x200000u64;
 
+pub enum RunMode {
+    Normal,
+    Debug(u64),
+}
+
 pub struct Core {
     regfile: Regfile,
     pc: u64,
@@ -43,18 +48,19 @@ pub struct Core {
     inst_num: u64,
     xlen: XLen,
     dbg_level: String,
-    trace_type: String,
+    trace_type: Vec<String>,
     ftr: FTrace,
 }
 
 impl Core {
     pub fn new(
         dbg_level: String,
-        trace_type: String,
+        trace_type: Vec<String>,
         xlen_val: XLen,
         start_addr: u64,
         end_inst: u32,
     ) -> Self {
+        println!("trace type: {:?}", trace_type);
         Core {
             regfile: Regfile::new(),
             pc: 0u64,
@@ -77,7 +83,7 @@ impl Core {
     // NOTE: like 'new' oper, but dont reset mem
     pub fn reset(&mut self) {
         self.regfile.reset();
-        self.pc = 0u64;
+        self.pc = self.start_addr;
         self.ppn = 0u64;
         self.priv_mode = PrivMode::Machine;
         self.addr_mode = AddrMode::None;
@@ -96,60 +102,89 @@ impl Core {
             // HACK: 0x8000_0000 need mem map
             self.mem[i] = data[i];
         }
+        self.pc = self.start_addr;
     }
 
-    pub fn check_bound(&self, val: u8) -> u8 {
-        if val >= 80 {
-            80u8
-        } else {
-            val
+    pub fn check_end(&mut self) -> bool {
+        let end = match self.load_word(self.pc, true) {
+            Ok(w) => w == self.end_inst,
+            Err(_e) => panic!(),
+        };
+
+        if end {
+            match self.regfile.x[10] {
+                0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
+                _ => println!("\x1b[91mTest Failed\x1b[0m"),
+            };
         }
+        end
+    }
+
+    // for hide private regfile in core var
+    pub fn rtrace(&self, val: &str) {
+        rtrace(&self.regfile, val);
+    }
+
+    // for hide private regfile in core var
+    pub fn reg(&self) -> &Regfile {
+        &self.regfile
+    }
+
+    // HACK: can refactor to improve readability
+    fn trace_find(&self, val: &str) -> bool {
+        for v in &self.trace_type {
+            if *v == val.to_string() {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn run_simu(
         &mut self,
         kdb_rx: Option<mpsc::Receiver<(u8, u8)>>,
         vga_tx: Option<mpsc::Sender<String>>,
+        run_mode: RunMode,
     ) {
-        self.pc = self.start_addr;
-
-        loop {
-            match kdb_rx {
-                Some(ref v) => {
-                    match v.try_recv() {
-                        Ok(mut vv) => {
-                            // println!("Got: {:?}", v)
-                            // HACK: trim because not support all key detect
-                            vv.0 = self.check_bound(vv.0);
-                            vv.1 = self.check_bound(vv.1);
-                            self.dev.kdb.det(vv.0, vv.1);
+        // self.pc = self.start_addr;
+        match run_mode {
+            RunMode::Normal => {
+                loop {
+                    match kdb_rx {
+                        Some(ref v) => {
+                            match v.try_recv() {
+                                Ok(vv) => {
+                                    // println!("Got: {:?}", v)
+                                    self.dev.kdb.det(vv.0, vv.1);
+                                }
+                                Err(_e) => {}
+                            }
                         }
-                        Err(_e) => {}
+                        None => {}
+                    }
+                    // println!("val: {:08x}", self.load_word(self.pc));
+                    if self.check_end() {
+                        break;
+                    }
+                    self.tick();
+                    self.inst_num += 1;
+                    // log!(self.pc);
+                    if self.dev.vga.sync {
+                        match vga_tx {
+                            Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
+                            None => {}
+                        }
                     }
                 }
-                None => {}
             }
-            // println!("val: {:08x}", self.load_word(self.pc));
-            let end = match self.load_word(self.pc, true) {
-                Ok(w) => w == self.end_inst,
-                Err(_e) => panic!(),
-            };
-
-            if end {
-                match self.regfile.x[10] {
-                    0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
-                    _ => println!("\x1b[91mTest Failed\x1b[0m"),
-                };
-                break;
-            }
-
-            self.tick();
-            self.inst_num += 1;
-            // log!(self.pc);
-            if self.dev.vga.sync {
-                match vga_tx {
-                    Some(ref v) => v.send(self.dev.vga.send_dat()).unwrap(),
-                    None => {}
+            RunMode::Debug(v) => {
+                // println!("v: {}", v);
+                let mut cnt = 0;
+                while cnt < v && !self.check_end() {
+                    self.tick();
+                    // log!(self.pc);
+                    self.inst_num += 1;
+                    cnt += 1;
                 }
             }
         }
@@ -174,12 +209,12 @@ impl Core {
         let inst = Decode::decode(self.pc, word, &self.xlen);
         match self.dbg_level.as_str() {
             "trace" => {
-                if self.trace_type == "itrace" {
+                if self.trace_find("itrace") {
                     itrace(self.pc, word, &inst, &[0x83000000u64, 0x88000490u64]);
                 }
             }
             "err" => {
-                if self.trace_type == "rtrace" {
+                if self.trace_find("rtrace") {
                     rtrace(&self.regfile, "a0");
                 }
             } // HACK:
@@ -189,6 +224,10 @@ impl Core {
     }
 
     fn handle_trap(&mut self, excpt: Exception) {
+        if self.dbg_level == "trace" && self.trace_find("etrace") {
+            etrace(&excpt);
+        }
+
         let cur_priv_encode = get_priv_encoding(&self.priv_mode) as u64;
         self.priv_mode =
             match (self.csr[csr::CSR_MEDELEG_ADDR as usize] >> get_exception_cause(&excpt)) & 1 {
@@ -354,6 +393,8 @@ impl Core {
 
     fn store_phy_mem(&mut self, addr: u64, val: u8) {
         if addr < self.start_addr {
+            log!(addr);
+            log!(self.start_addr);
             panic!("[store]mem out of boundery");
         }
 
@@ -834,7 +875,7 @@ impl Core {
                             self.regfile.x[rd as usize] = tmp_pc as i64;
                         }
 
-                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                        if self.dbg_level == "trace" && self.trace_find("ftrace") {
                             match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
                                 Ok(()) => {}
                                 Err(_e) => panic!(),
@@ -1242,6 +1283,7 @@ impl Core {
                             Err(e) => return Err(e),
                         };
 
+                        // NOTE: need to set right mstatus value in process context switch
                         self.priv_mode =
                             match (self.csr[csr::CSR_MSTATUS_ADDR as usize] >> 11) & 0x3 {
                                 0 => PrivMode::User,
@@ -1313,7 +1355,7 @@ impl Core {
                         }
                         let tmp_pc = self.pc;
                         self.pc = self.pc.wrapping_sub(4).wrapping_add(imm as u64);
-                        if self.dbg_level == "trace" && self.trace_type == "ftrace" {
+                        if self.dbg_level == "trace" && self.trace_find("ftrace") {
                             match self.ftr.ftrace(tmp_pc.wrapping_sub(4), self.pc) {
                                 Ok(()) => {}
                                 Err(_e) => panic!(),

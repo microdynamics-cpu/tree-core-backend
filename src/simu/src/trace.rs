@@ -1,4 +1,5 @@
 use crate::inst::{get_inst_name, Inst};
+use crate::privilege::Exception;
 use crate::regfile::Regfile;
 use object::{Object, ObjectSymbol};
 use std::error::Error;
@@ -90,7 +91,12 @@ pub fn csr_trace() {}
 
 pub fn dtrace() {}
 
-pub fn etrace() {}
+pub fn etrace(excpt: &Exception) {
+    println!(
+        "[etrace] type: {:?} addr: {:016x}",
+        excpt.excpt_type, excpt.addr
+    );
+}
 
 macro_rules! log {
     ($($args: expr),*) => {
