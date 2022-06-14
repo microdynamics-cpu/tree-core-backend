@@ -13,7 +13,7 @@ use crate::trace::{etrace, itrace, log, rtrace, FTrace};
 use std::sync::mpsc;
 
 // const self.start_addr: u64 = 0x1000u64;
-const MEM_CAPACITY: usize = 60 * 1024 * 1024;
+const MEM_CAPACITY: usize = 128 * 1024 * 1024; // mem use: 128MB
 const CSR_CAPACITY: usize = 4096;
 const PERIF_START_ADDR: u64 = 0xa1000000u64;
 const PERIF_ADDR_SIZE: u64 = 0x1000u64;
