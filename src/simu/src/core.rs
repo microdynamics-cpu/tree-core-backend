@@ -103,6 +103,7 @@ impl Core {
             self.mem[i] = data[i];
         }
         self.pc = self.start_addr;
+        self.dev.rtc.val_set_load(); // set load time for perf statistic
     }
 
     pub fn check_end(&mut self) -> bool {
@@ -113,7 +114,12 @@ impl Core {
 
         if end {
             match self.regfile.x[10] {
-                0 => println!("\x1b[92mTest Passed, inst_num: {}\x1b[0m", self.inst_num),
+                0 => println!(
+                    "\x1b[92mTest Passed, inst_num: {} load: {}ms elapse: {}ms\x1b[0m",
+                    self.inst_num,
+                    self.dev.rtc.val_load(),
+                    self.dev.rtc.val_ms()
+                ),
                 _ => println!("\x1b[91mTest Failed\x1b[0m"),
             };
         }
