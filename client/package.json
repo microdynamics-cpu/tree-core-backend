@@ -1,0 +1,55 @@
+{
+    "name": "treecore-lang-client",
+    "displayName": "Treecore Lang Client",
+    "description": "Provides syntax highlighting and snippets for HDL language",
+    "version": "0.0.1",
+    "publisher": "maksyuki",
+    "homepage": "https://github.com/microdynamics-cpu/tree-core-backend/client",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/microdynamics-cpu/tree-core-backend/client"
+    },
+    "bugs": {
+        "url": "https://github.com/microdynamics-cpu/tree-core-backend/client/issues",
+        "email": "maksyuki@qq.com"
+    },
+    "engines": {
+        "vscode": "^1.5.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Snippets"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "rvs",
+                "aliases": [
+                    "RISC-V Assembly",
+                    "riscv"
+                ],
+                "extensions": [
+                    ".S",
+                    ".s",
+                    ".riscv",
+                    ".rvs",
+                    ".asm"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "rvs",
+                "scopeName": "source.riscv",
+                "path": "./syntaxes/rvs.tmLanguage"
+            }
+        ],
+        "snippets": [
+            {
+                "language": "rvs",
+                "path": "./snippets/rvs.json"
+            }
+        ]
+    }
+}
