@@ -7,6 +7,7 @@
       <string>S</string>
       <string>s</string>
       <string>riscv</string>
+      <string>rvs</string>
       <string>asm</string>
     </array>
     <key>keyEquivalent</key>
