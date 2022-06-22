@@ -20,6 +20,10 @@
         "Programming Languages",
         "Snippets"
     ],
+    "activationEvents": [
+        "*"
+    ],
+    "main": "./out/extension.js",
     "contributes": {
         "languages": [
             {
@@ -49,6 +53,12 @@
             {
                 "language": "rvs",
                 "path": "./snippets/rvs.json"
+            }
+        ],
+        "commands": [
+            {
+                "command": "extension.helloWorld",
+                "title": "Hello World"
             }
         ],
         "configuration": {
@@ -92,5 +102,19 @@
                 }
             }
         }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "lint": "eslint . --ext .ts,.tsx",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/node": "^16.11.7",
+        "@types/vscode": "^1.34.0",
+        "@typescript-eslint/eslint-plugin": "^5.19.0",
+        "@typescript-eslint/parser": "^5.19.0",
+        "eslint": "^8.13.0",
+        "typescript": "^4.7.2"
     }
 }
