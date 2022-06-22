@@ -50,6 +50,47 @@
                 "language": "rvs",
                 "path": "./snippets/rvs.json"
             }
-        ]
+        ],
+        "configuration": {
+            "type": "object",
+            "title": "Treecore Lang Client",
+            "properties": {
+                "tclc.languageServer": {
+                    "description": "Language server location. Changing this option requires a restart.",
+                    "type": "string",
+                    "default": "buildin",
+                    "enum": [
+                        "buildin",
+                        "user",
+                        "system"
+                    ],
+                    "enumDescriptions": [
+                        "Use language server buildin in extension.",
+                        "Use custom path to tclc.languageServerUserPath.",
+                        "Use system path to tclc.languageServerUserPath."
+                    ]
+                },
+                "tclc.languageServerUserPath": {
+                    "description": "Path to treecore language server executable, used when Tclc: Language Server = \"user\"",
+                    "type": "string"
+                },
+                "tclc.trace.server": {
+                    "type": "string",
+                    "scope": "window",
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
+                    "enumDescriptions": [
+                        "No traces",
+                        "Error only",
+                        "Full log"
+                    ],
+                    "default": "off",
+                    "description": "Trace requests to the treecore language server (this is usually overly verbose and not recommended for regular users)"
+                }
+            }
+        }
     }
 }
