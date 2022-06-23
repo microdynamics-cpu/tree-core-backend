@@ -1,0 +1,11 @@
+[package]
+name = "treecore_ls"
+version = "0.0.1"
+authors = ["maksyuki <maksyuki@126.com>"]
+license = "GPL-3.0"
+description = "TreeCore Language Server"
+repository = "https://github.com/microdynamics-cpu/tree-core-backend/tree/main/src/server"
+edition = "2021"
+
+[dependencies]
+clap = "3.2.6"
