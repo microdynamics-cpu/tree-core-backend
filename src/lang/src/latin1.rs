@@ -1,13 +1,7 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this file,
-// You can obtain one at http://mozilla.org/MPL/2.0/.
-//
-// Copyright (c) 2018, Olof Kraigher olof.kraigher@gmail.com
-
 use crate::source::Position;
 use std::{fmt, str};
 
-fn iso_8859_1_to_utf8(bytes: &[u8]) -> String {
+fn latin1_to_utf8(bytes: &[u8]) -> String {
     let mut utf8_bytes = Vec::new();
     for byte in bytes.iter() {
         let byte = *byte;
@@ -55,6 +49,7 @@ pub struct Latin1String {
 }
 
 impl Latin1String {
+    // constructor
     pub fn empty() -> Latin1String {
         Latin1String { bytes: Vec::new() }
     }
@@ -160,13 +155,13 @@ impl Latin1String {
 
 impl fmt::Debug for Latin1String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", iso_8859_1_to_utf8(&self.bytes))
+        write!(f, "{:?}", latin1_to_utf8(&self.bytes))
     }
 }
 
 impl fmt::Display for Latin1String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", iso_8859_1_to_utf8(&self.bytes))
+        write!(f, "{}", latin1_to_utf8(&self.bytes))
     }
 }
 

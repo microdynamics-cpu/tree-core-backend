@@ -89,7 +89,7 @@ impl MessageHandler for MessagePrinter {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
