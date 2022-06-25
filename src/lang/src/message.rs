@@ -47,11 +47,7 @@ impl Message {
     pub fn file_error(msg: impl Into<String>, file_name: &Path) -> Message {
         Message {
             msg_type: MessageType::Error,
-            msg: format!(
-                "{} (In file {})",
-                msg.into(),
-                file_name.to_string_lossy()
-            ),
+            msg: format!("{} (In file {})", msg.into(), file_name.to_string_lossy()),
         }
     }
 }
@@ -100,11 +96,15 @@ mod test {
     #[test]
     fn test_all() {
         let log_msg = Message::log("log level info");
-        // let err_msg = Message::log("err level info");
-        // let mut msg_list: Vec<Message>;
+        let err_msg = Message::log("err level info");
+        let mut msg_list = Vec::new();
         println!("{}", log_msg);
-        // msg_list.push(log_msg);
-        // msg_list.push(err_msg);
+        println!("{}", err_msg);
+        msg_list.push(log_msg);
+        msg_list.push(err_msg);
+        for v in &msg_list {
+            println!("[msg_list]: {}", v);
+        }
         assert_eq!("hello", "hello");
     }
 }
