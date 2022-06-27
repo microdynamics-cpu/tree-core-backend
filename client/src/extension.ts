@@ -29,7 +29,8 @@ const isWindows = process.platform === 'win32';
 const langServerName = isWindows
     ? 'vhdl_ls-x86_64-pc-windows-msvc'
     : 'vhdl_ls-x86_64-unknown-linux-gnu';
-const langServerBinName = 'vhdl_ls';
+// const langServerBinName = 'vhdl_ls';
+const langServerBinName = 'treecore_ls';
 let langServer: string;
 
 export async function activate(ctx: vscode.ExtensionContext) {
@@ -63,9 +64,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
     // get language server configuration and command to start server
     let workspace = vscode.workspace;
-    let langServerBin = workspace
-        .getConfiguration()
-        .get('tclc.languageServer');
+    let langServerBin = workspace.getConfiguration().get('tclc.languageServer');
     let lsBinary = langServerBin as keyof typeof LangServerBin;
     let serverOptions: ServerOptions;
     switch (lsBinary) {
@@ -94,6 +93,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
         traceOutputChannel: traceOutputChn,
     };
     if (workspace.workspaceFolders) {
+        infoOutputChn.appendLine('[check workspace]' + workspace.workspaceFolders[0].uri.fsPath);
         clientOptions.synchronize = {
             fileEvents: workspace.createFileSystemWatcher(
                 path.join(
@@ -107,41 +107,25 @@ export async function activate(ctx: vscode.ExtensionContext) {
     // create the language client
     client = new LanguageClient(
         'vhdlls',
-        'VHDL LS',
+        'TreeCore Lang Server',
         serverOptions,
         clientOptions
     );
 
     // Start the client. This will also launch the server
-    let languageServerDisposable = client.start();
-    ctx.subscriptions.push(languageServerDisposable);
+    let langServerDisposable = client.start();
+    ctx.subscriptions.push(langServerDisposable);
     ctx.subscriptions.push(
         vscode.commands.registerCommand('tclc.restart', async () => {
             const Msg = 'Restarting TreeCore LS';
             infoOutputChn.appendLine(Msg);
             vscode.window.showInformationMessage(Msg);
             await client.stop();
-            languageServerDisposable.dispose();
-            languageServerDisposable = client.start();
-            ctx.subscriptions.push(languageServerDisposable);
+            langServerDisposable.dispose();
+            langServerDisposable = client.start();
+            ctx.subscriptions.push(langServerDisposable);
         })
     );
-
-    infoOutputChn.appendLine('Checking for updates...');
-    lockfile
-        .lock(ctx.asAbsolutePath('server'), {
-            lockfilePath: ctx.asAbsolutePath(path.join('server', '.lock')),
-        })
-        .then((release: () => void) => {
-            getLatestLanguageServer(60000, ctx)
-                .catch((err) => {
-                    infoOutputChn.appendLine(err);
-                })
-                .finally(() => {
-                    infoOutputChn.appendLine('Language server update finished.');
-                    return release();
-                });
-        });
 
     infoOutputChn.appendLine('Language server started');
 }
@@ -333,4 +317,22 @@ async function getLatestLanguageServer(
         });
     }
     return Promise.resolve();
+}
+
+function updateLanguageServer(ctx: vscode.ExtensionContext) {
+    infoOutputChn.appendLine('Checking for updates...');
+    lockfile
+        .lock(ctx.asAbsolutePath('server'), {
+            lockfilePath: ctx.asAbsolutePath(path.join('server', '.lock')),
+        })
+        .then((release: () => void) => {
+            getLatestLanguageServer(60000, ctx)
+                .catch((err) => {
+                    infoOutputChn.appendLine(err);
+                })
+                .finally(() => {
+                    infoOutputChn.appendLine('Language server update finished.');
+                    return release();
+                });
+        });
 }
