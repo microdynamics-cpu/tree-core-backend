@@ -1,30 +1,25 @@
-// #[macro_use]
-// extern crate log;
+#[macro_use]
+extern crate log;
 
-// use clap::App;
+use clap::App;
 // use treecore_ls::stdio_server;
 
-// fn main() {
-//     let _matches = App::new(env!("CARGO_PKG_NAME"))
-//     .version(env!("CARGO_PKG_VERSION"))
-//     .author(env!("CARGO_PKG_AUTHORS"))
-//     .about(env!("CARGO_PKG_DESCRIPTION"))
-//     .get_matches();
-
-//     env_logger::init();
-//     info!("Starting language server");
-// }
-
-use std::error::Error;
-
-use lsp_types::OneOf;
 use lsp_types::{
-    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
+    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
 };
+use std::error::Error;
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
+    let _matches = App::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .get_matches();
+    env_logger::init();
+    info!("Starting language server");
+
     // Note that  we must have our logging only write out to stderr.
     eprintln!("starting generic LSP server");
 
