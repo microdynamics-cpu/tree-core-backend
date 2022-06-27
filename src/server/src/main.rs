@@ -5,6 +5,7 @@ use clap::App;
 // use treecore_ls::stdio_server;
 
 use lsp_types::{
+    Location, Range, Position, Url,
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
 };
 use std::error::Error;
@@ -20,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     env_logger::init();
     info!("Starting language server");
 
-    // Note that  we must have our logging only write out to stderr.
+    // NOTE: we must have our logging only write out to stderr.
     eprintln!("starting generic LSP server");
 
     // Create the transport. Includes the stdio (stdin and stdout) versions but this could
@@ -59,7 +60,20 @@ fn main_loop(
                 match cast::<GotoDefinition>(req) {
                     Ok((id, params)) => {
                         eprintln!("got gotoDefinition request #{}: {:?}", id, params);
-                        let result = Some(GotoDefinitionResponse::Array(Vec::new()));
+                        // let result = Some(GotoDefinitionResponse::Array(Vec::new()));
+                        let result = Some(GotoDefinitionResponse::Scalar(Location {
+                            uri: Url::parse("https://example.net/a/c.png")?,
+                            range: Range{
+                                start: Position {
+                                    line: 6,
+                                    character: 6
+                                },
+                                end: Position {
+                                    line: 666666,
+                                    character: 666666
+                                }
+                            }
+                        }));
                         let result = serde_json::to_value(&result).unwrap();
                         let resp = Response {
                             id,
@@ -72,7 +86,6 @@ fn main_loop(
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{:?}", err),
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
-                // ...
             }
             Message::Response(resp) => {
                 eprintln!("got response: {:?}", resp);
