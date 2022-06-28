@@ -2,12 +2,14 @@
 extern crate log;
 
 use clap::App;
-// use treecore_ls::stdio_server;
-
 use lsp_types::{
-    Location, Range, Position, Url,
-    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
+    request::{GotoDefinition, HoverRequest},
+    selection_range::SelectionRangeProviderCapability,
+    GotoDefinitionResponse, Hover, HoverContents, HoverProviderCapability, InitializeParams,
+    Location, MarkedString, OneOf, Position, Range, ServerCapabilities, Url,
 };
+
+// use treecore_ls::stdio_server;
 use std::error::Error;
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
@@ -30,6 +32,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
+        selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
         definition_provider: Some(OneOf::Left(true)),
         ..Default::default()
     })
@@ -57,22 +61,44 @@ fn main_loop(
                     return Ok(());
                 }
                 eprintln!("got request: {:?}", req);
+                // HACK: don't use 'clone' method
+                match cast::<HoverRequest>(req.clone()) {
+                    Ok((id, params)) => {
+                        eprintln!("got hover request #{}: {:?}", id, params);
+                        let result = Some(Hover {
+                            contents: HoverContents::Scalar(MarkedString::String(
+                                "I am maksyuki!!!".to_string(),
+                            )),
+                            range: None,
+                        });
+                        let result = serde_json::to_value(&result).unwrap();
+                        let resp = Response {
+                            id,
+                            result: Some(result),
+                            error: None,
+                        };
+                        connection.sender.send(Message::Response(resp))?;
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{:?}", err),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
                 match cast::<GotoDefinition>(req) {
                     Ok((id, params)) => {
                         eprintln!("got gotoDefinition request #{}: {:?}", id, params);
-                        // let result = Some(GotoDefinitionResponse::Array(Vec::new()));
                         let result = Some(GotoDefinitionResponse::Scalar(Location {
                             uri: Url::parse("https://example.net/a/c.png")?,
-                            range: Range{
+                            range: Range {
                                 start: Position {
                                     line: 6,
-                                    character: 6
+                                    character: 6,
                                 },
                                 end: Position {
                                     line: 666666,
-                                    character: 666666
-                                }
-                            }
+                                    character: 666666,
+                                },
+                            },
                         }));
                         let result = serde_json::to_value(&result).unwrap();
                         let resp = Response {
@@ -90,8 +116,8 @@ fn main_loop(
             Message::Response(resp) => {
                 eprintln!("got response: {:?}", resp);
             }
-            Message::Notification(not) => {
-                eprintln!("got notification: {:?}", not);
+            Message::Notification(notif) => {
+                eprintln!("got notification: {:?}", notif);
             }
         }
     }
