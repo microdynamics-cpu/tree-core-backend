@@ -4,9 +4,9 @@ extern crate log;
 use clap::App;
 use lsp_types::{
     request::{GotoDefinition, HoverRequest},
-    selection_range::SelectionRangeProviderCapability,
-    GotoDefinitionResponse, Hover, HoverContents, HoverProviderCapability, InitializeParams,
-    Location, MarkedString, OneOf, Position, Range, ServerCapabilities, Url,
+    CodeDescription, Diagnostic, DiagnosticSeverity, GotoDefinitionResponse, Hover, HoverContents,
+    HoverProviderCapability, InitializeParams, Location, MarkedString, NumberOrString, OneOf,
+    Position, PublishDiagnosticsParams, Range, ServerCapabilities, Url,
 };
 
 // use treecore_ls::stdio_server;
@@ -32,7 +32,6 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
-        selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         definition_provider: Some(OneOf::Left(true)),
         ..Default::default()
@@ -53,6 +52,46 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     eprintln!("starting example main loop");
+
+    let notif_tmp = PublishDiagnosticsParams {
+        uri: Url::parse("file:///root/Desktop/ide/tree-core-backend/client/tests/trace.rvs")?,
+        diagnostics: vec![Diagnostic {
+            range: Range {
+                start: Position {
+                    line: 0,
+                    character: 1,
+                },
+                end: Position {
+                    line: 1,
+                    character: 5,
+                },
+            },
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::Number(1234234)),
+            code_description: Some(CodeDescription {
+                href: Url::parse(
+                    "file:///root/Desktop/ide/tree-core-backend/client/tests/trace.rvs",
+                )?,
+            }),
+            source: Some("demo".to_string()),
+            message: "this is the first diagnostic".to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        }],
+        version: None,
+    };
+
+    let notification = lsp_server::Notification {
+        method: "textDocument/publishDiagnostics".into(),
+        params: serde_json::to_value(notif_tmp).unwrap(),
+    };
+
+    connection
+        .sender
+        .send(Message::Notification(notification))
+        .unwrap();
+
     for msg in &connection.receiver {
         eprintln!("got msg: {:?}", msg);
         match msg {
