@@ -1,0 +1,23 @@
+[package]
+name = "treecore_ls"
+version = "0.0.1"
+authors = ["maksyuki <maksyuki@126.com>"]
+license = "GPL-3.0"
+description = "TreeCore Language Server"
+repository = "https://github.com/microdynamics-cpu/tree-core-backend/tree/main/src/server"
+edition = "2021"
+
+[dependencies]
+treecore_lang = { version = "0.0.1", path = "../lang"}
+serde = "1.0.137"
+serde_json = "1.0.81"
+clap = "3.2.6"
+log = "0.4.0"
+env_logger = "0.8.4"
+lsp-types = "0.93.0"
+lsp-server = "0.6.0"
+fnv = "1.0.7"
+
+[dev-dependencies]
+tempfile = "3.3.0"
+pretty_assertions = "1.2.1"
