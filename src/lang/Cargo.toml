@@ -1,0 +1,21 @@
+[package]
+name = "treecore_lang"
+version = "0.0.1"
+authors = ["maksyuki <maksyuki@126.com>"]
+license = "GPL-3.0"
+description = "TreeCore Language Frontend"
+repository = "https://github.com/microdynamics-cpu/tree-core-backend/tree/main/src/lang"
+edition = "2021"
+
+[dependencies]
+clap = "3.2.6"
+log = "0.4.0"
+env_logger = "0.8.4"
+pad = "0.1.6"
+fnv = "1.0.7"
+parking_lot = "0.12.1"
+
+[dev-dependencies]
+tempfile = "3.3.0"
+pretty_assertions = "1.2.1"
+assert_matches = "1.5.0"
