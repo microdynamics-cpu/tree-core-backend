@@ -2,6 +2,7 @@
 *.log
 *.csrc
 *.vcd
+*.bin
 out/
 logs
 
