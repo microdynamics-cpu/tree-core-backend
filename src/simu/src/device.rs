@@ -22,6 +22,7 @@ pub struct Rtc {
     buf: u32,
     cnt: u8,
     loading_flag: bool,
+    load: u128,
 }
 
 impl Rtc {
@@ -31,6 +32,7 @@ impl Rtc {
             buf: 0u32,
             cnt: 0u8,
             loading_flag: false,
+            load: 0u128,
         }
     }
 
@@ -55,6 +57,18 @@ impl Rtc {
         // println!("elapsed: {:08x}", self.buf);
         // println!("cnt: {}, data: {:08x}\n", self.cnt, (self.buf >> (self.cnt * 8)) as u8);
         (self.buf >> (self.cnt * 8)) as u8
+    }
+
+    pub fn val_set_load(&mut self) {
+        self.load = self.cur_t.elapsed().as_millis();
+    }
+
+    pub fn val_load(&self) -> u128 {
+        self.load
+    }
+
+    pub fn val_ms(&mut self) -> u128 {
+        self.cur_t.elapsed().as_millis()
     }
 }
 
@@ -170,9 +184,7 @@ impl Clint {
         }
     }
 
-    pub fn update_time() {
-
-    }
+    pub fn update_time() {}
 }
 
 pub struct Device {
