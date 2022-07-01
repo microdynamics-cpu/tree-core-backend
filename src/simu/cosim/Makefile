@@ -1,8 +1,8 @@
-default:
-	@echo "-- VERILATE & BUILD --------"
-	verilator -cc --exe --build -j top.v sim_main.cpp
-	@obj_dir/Vtop
+SRC_FILE := $(shell find -name "*.v")
 
-maintainer-copy::
-clean mostlyclean distclean maintainer-clean::
-	-rm -rf obj_dir *.log *.dmp *.vpd core
+default:
+	verilator -cc --exe --trace --assert -O3 --build --Mdir out --top-module rvcpu -j $(SRC_FILE) main.cpp
+	@out/Vrvcpu
+
+clean:
+	rm -rf out
