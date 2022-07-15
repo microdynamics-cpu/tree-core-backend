@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_a, tag, take_until},
-    character::complete::{digit0, digit1, multispace0},
+    character::complete::{one_of, digit0, digit1, multispace0},
     combinator::{map, map_res},
     multi::many0,
     sequence::{delimited, pair, separated_pair, tuple},
@@ -723,8 +723,17 @@ mod unit_test {
     }
 
     #[test]
+    fn test_simu_kw() {
+        assert_eq!(simu_kw(" $dumpall"), Ok(("", "$dumpall")));
+        assert_eq!(simu_kw("  $dumpoff"), Ok(("", "$dumpoff")));
+        assert_eq!(simu_kw("$dumpon   "), Ok(("", "$dumpon")));
+        assert_eq!(simu_kw("$dumpvars     "), Ok(("", "$dumpvars")));
+    }
+
+    #[test]
     fn test_simu_time_val() {
         assert_eq!(simu_time_val("1000"), Ok(("", 1000u32)));
+        assert_eq!(simu_time_val("1324"), Ok(("", 1324u32)));
     }
 
     #[test]
@@ -735,6 +744,8 @@ mod unit_test {
     #[test]
     fn test_sec_val_chg() {
         assert_eq!(sec_val_chg("1#%\r\n"), Ok(("", Val { val: "1", id: "#%" })));
+        assert_eq!(sec_val_chg("0:'\r\n"), Ok(("", Val { val: "0", id: ":'" })));
+        assert_eq!(sec_val_chg("10@'\r\n"), Ok(("", Val { val: "1", id: "0@" })));
     }
 
     #[test]
