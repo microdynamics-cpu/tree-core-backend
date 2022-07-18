@@ -1,6 +1,6 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
     multi::many0,
@@ -293,7 +293,6 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
-// NOTE: no test
 pub fn simu_kw(s: &str) -> IResult<&str, &str> {
     alt((
         dumpall_simu_kw,
@@ -311,10 +310,9 @@ pub fn simu_time(s: &str) -> IResult<&str, u32> {
     map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
 }
 
-// NOTE: no test
-// pub fn val_chg(s: &str) -> IResult<&str, Val> {
-// alt((sec_val_chg, vec_val_chg))(s)
-// }
+pub fn val_chg(s: &str) -> IResult<&str, Val> {
+    alt((sec_val_chg, vec_val_chg))(s)
+}
 
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     map(tuple((sec_val, variable_id)), |(val, id)| {
@@ -346,7 +344,7 @@ fn bin_str_to_oct(val: &str) -> u64 {
 
 pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
     map(
-        tuple((vec_flag_val, digit1, variable_id)),
+        tuple((vec_flag_val, alt((digit1, is_a("xXzZ"))), variable_id)),
         |(_ch, val, id)| {
             let mut res = Val {
                 val: 0u64,
@@ -355,7 +353,7 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
             };
 
             if val == "x" || val == "X" || val == "z" || val == "Z" {
-                // res.vld = ;
+                res.vld = val.chars().next().unwrap();
             } else {
                 res.val = bin_str_to_oct(val);
             }
@@ -780,6 +778,21 @@ mod unit_test {
     }
 
     #[test]
+    fn test_val_chg() {
+        assert_eq!(
+            val_chg("b101011 #%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b101011u64,
+                    vld: '0',
+                    id: "#%"
+                }
+            ))
+        );
+    }
+
+    #[test]
     fn test_sec_val_chg() {
         assert_eq!(
             sec_val_chg("1#%\r\n"),
@@ -842,7 +855,7 @@ mod unit_test {
     #[test]
     fn test_vec_val_chg() {
         assert_eq!(
-            vec_val_chg("b101011#%\r\n"),
+            vec_val_chg("b101011 #%\r\n"),
             Ok((
                 "",
                 Val {
@@ -852,11 +865,41 @@ mod unit_test {
                 }
             ))
         );
+        assert_eq!(
+            vec_val_chg("b11111111111111111111111001101010 D%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b11111111111111111111111001101010u64,
+                    vld: '0',
+                    id: "D%"
+                }
+            ))
+        );
 
-        // assert_eq!(
-        //     vec_val_chg("bx#%\r\n"),
-        //     Ok(("", Val { val: "x", id: "#%" }))
-        // );
+        assert_eq!(
+            vec_val_chg("bx #%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
+                    id: "#%"
+                }
+            ))
+        );
+
+        assert_eq!(
+            vec_val_chg("bz x#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'z',
+                    id: "x#%"
+                }
+            ))
+        );
     }
 
     #[test]
