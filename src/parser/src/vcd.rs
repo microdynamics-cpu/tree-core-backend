@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_a, tag, take_until},
-    character::complete::{one_of, digit0, digit1, multispace0},
+    character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
     multi::many0,
     sequence::{delimited, pair, separated_pair, tuple},
@@ -39,7 +39,8 @@ pub struct Var<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Val<'a> {
-    pub val: &'a str,
+    pub val: u64,
+    pub vld: char,
     pub id: &'a str,
 }
 
@@ -316,19 +317,31 @@ pub fn simu_time(s: &str) -> IResult<&str, u32> {
 // }
 
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(tuple((sec_val, variable_id)), |(val, id)| Val { val, id })(s)
+    map(tuple((sec_val, variable_id)), |(val, id)| {
+        let mut res = Val {
+            val: 0u64,
+            vld: '0',
+            id: id,
+        };
+        if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
+            res.vld = val;
+        } else {
+            res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
+        }
+        res
+    })(s)
 }
 
 // NOTE: no test
-pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(
-        tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
-        |(_ch, val, id)| Val { val, id },
-    )(s)
-}
+// pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+//     map(
+//         tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
+//         |(_ch, val, id)| Val { val, id },
+//     )(s)
+// }
 
-pub fn sec_val(s: &str) -> IResult<&str, &str> {
-    is_a("01xXzZ")(s)
+pub fn sec_val(s: &str) -> IResult<&str, char> {
+    one_of("01xXzZ")(s)
 }
 
 pub fn vec_val(s: &str) -> IResult<&str, &str> {
@@ -743,38 +756,68 @@ mod unit_test {
 
     #[test]
     fn test_sec_val_chg() {
-        assert_eq!(sec_val_chg("1#%\r\n"), Ok(("", Val { val: "1", id: "#%" })));
-        assert_eq!(sec_val_chg("0:'\r\n"), Ok(("", Val { val: "0", id: ":'" })));
-        assert_eq!(sec_val_chg("10@'\r\n"), Ok(("", Val { val: "1", id: "0@" })));
-    }
-
-    #[test]
-    fn test_vec_val_chg() {
         assert_eq!(
-            vec_val_chg("b101011#%\r\n"),
+            sec_val_chg("1#%\r\n"),
             Ok((
                 "",
                 Val {
-                    val: "101011",
+                    val: 1u64,
+                    vld: '0',
                     id: "#%"
                 }
             ))
         );
-
         assert_eq!(
-            vec_val_chg("bx#%\r\n"),
-            Ok(("", Val { val: "x", id: "#%" }))
+            sec_val_chg("0:'\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: '0',
+                    id: ":'"
+                }
+            ))
+        );
+        assert_eq!(
+            sec_val_chg("10@'\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 1u64,
+                    vld: '0',
+                    id: "0@'"
+                }
+            ))
         );
     }
 
+    // #[test]
+    // fn test_vec_val_chg() {
+    //     assert_eq!(
+    //         vec_val_chg("b101011#%\r\n"),
+    //         Ok((
+    //             "",
+    //             Val {
+    //                 val: 0b101011,
+    //                 id: "#%"
+    //             }
+    //         ))
+    //     );
+
+    //     assert_eq!(
+    //         vec_val_chg("bx#%\r\n"),
+    //         Ok(("", Val { val: "x", id: "#%" }))
+    //     );
+    // }
+
     #[test]
     fn test_sec_val() {
-        assert_eq!(sec_val("0"), Ok(("", "0")));
-        assert_eq!(sec_val("1"), Ok(("", "1")));
-        assert_eq!(sec_val("x"), Ok(("", "x")));
-        assert_eq!(sec_val("X"), Ok(("", "X")));
-        assert_eq!(sec_val("z"), Ok(("", "z")));
-        assert_eq!(sec_val("Z"), Ok(("", "Z")));
+        assert_eq!(sec_val("0"), Ok(("", '0')));
+        assert_eq!(sec_val("1"), Ok(("", '1')));
+        assert_eq!(sec_val("x"), Ok(("", 'x')));
+        assert_eq!(sec_val("X"), Ok(("", 'X')));
+        assert_eq!(sec_val("z"), Ok(("", 'z')));
+        assert_eq!(sec_val("Z"), Ok(("", 'Z')));
     }
 
     #[test]
