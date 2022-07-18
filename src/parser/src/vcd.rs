@@ -1,6 +1,6 @@
 use nom::{
     branch::alt,
-    bytes::complete::{is_a, tag, take_until},
+    bytes::complete::{tag, take_until},
     character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
     multi::many0,
@@ -332,20 +332,45 @@ pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     })(s)
 }
 
-// NOTE: no test
-// pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
-//     map(
-//         tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
-//         |(_ch, val, id)| Val { val, id },
-//     )(s)
-// }
+fn bin_str_to_oct(val: &str) -> u64 {
+    let mut res = 0u64;
+    let mut mul = 1u64;
+    for v in val.chars().rev() {
+        if v == '1' {
+            res += mul;
+        }
+        mul *= 2;
+    }
+    res
+}
+
+pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(
+        tuple((vec_flag_val, digit1, variable_id)),
+        |(_ch, val, id)| {
+            let mut res = Val {
+                val: 0u64,
+                vld: '0',
+                id: id,
+            };
+
+            if val == "x" || val == "X" || val == "z" || val == "Z" {
+                // res.vld = ;
+            } else {
+                res.val = bin_str_to_oct(val);
+            }
+
+            res
+        },
+    )(s)
+}
 
 pub fn sec_val(s: &str) -> IResult<&str, char> {
     one_of("01xXzZ")(s)
 }
 
-pub fn vec_val(s: &str) -> IResult<&str, &str> {
-    is_a("bBrR")(s)
+pub fn vec_flag_val(s: &str) -> IResult<&str, char> {
+    one_of("bBrR")(s)
 }
 
 // high level parser
@@ -789,26 +814,50 @@ mod unit_test {
                 }
             ))
         );
+
+        assert_eq!(
+            sec_val_chg("x4@\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
+                    id: "4@"
+                }
+            ))
+        );
+        assert_eq!(
+            sec_val_chg("zx4@\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'z',
+                    id: "x4@"
+                }
+            ))
+        );
     }
 
-    // #[test]
-    // fn test_vec_val_chg() {
-    //     assert_eq!(
-    //         vec_val_chg("b101011#%\r\n"),
-    //         Ok((
-    //             "",
-    //             Val {
-    //                 val: 0b101011,
-    //                 id: "#%"
-    //             }
-    //         ))
-    //     );
+    #[test]
+    fn test_vec_val_chg() {
+        assert_eq!(
+            vec_val_chg("b101011#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b101011u64,
+                    vld: '0',
+                    id: "#%"
+                }
+            ))
+        );
 
-    //     assert_eq!(
-    //         vec_val_chg("bx#%\r\n"),
-    //         Ok(("", Val { val: "x", id: "#%" }))
-    //     );
-    // }
+        // assert_eq!(
+        //     vec_val_chg("bx#%\r\n"),
+        //     Ok(("", Val { val: "x", id: "#%" }))
+        // );
+    }
 
     #[test]
     fn test_sec_val() {
@@ -821,11 +870,11 @@ mod unit_test {
     }
 
     #[test]
-    fn test_vec_val() {
-        assert_eq!(vec_val("b"), Ok(("", "b")));
-        assert_eq!(vec_val("B"), Ok(("", "B")));
-        assert_eq!(vec_val("r"), Ok(("", "r")));
-        assert_eq!(vec_val("R"), Ok(("", "R")));
+    fn test_vec_flag_val() {
+        assert_eq!(vec_flag_val("b"), Ok(("", 'b')));
+        assert_eq!(vec_flag_val("B"), Ok(("", 'B')));
+        assert_eq!(vec_flag_val("r"), Ok(("", 'r')));
+        assert_eq!(vec_flag_val("R"), Ok(("", 'R')));
     }
 
     #[test]
