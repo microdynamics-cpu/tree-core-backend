@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
-    multi::many0,
+    multi::{many0, many1},
     sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
@@ -50,6 +50,13 @@ pub struct VcdMeta<'a> {
     pub sc_list: Vec<Scope<'a>>,
     pub rt_scope: u32,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VcdTimeVal<'a> {
+    pub st_flag: u32,
+    pub tv_list: Vec<Val<'a>>,
+}
+
 // ref to the verilog-std-1364-2005 LRM
 // declaration_keyword
 pub fn comm_delc_kw(s: &str) -> IResult<&str, &str> {
@@ -315,19 +322,22 @@ pub fn val_chg(s: &str) -> IResult<&str, Val> {
 }
 
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(tuple((sec_val, variable_id)), |(val, id)| {
-        let mut res = Val {
-            val: 0u64,
-            vld: '0',
-            id: id,
-        };
-        if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
-            res.vld = val;
-        } else {
-            res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
-        }
-        res
-    })(s)
+    map(
+        tuple((sec_val, variable_id, multispace0)),
+        |(val, id, _)| {
+            let mut res = Val {
+                val: 0u64,
+                vld: '0',
+                id: id,
+            };
+            if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
+                res.vld = val;
+            } else {
+                res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
+            }
+            res
+        },
+    )(s)
 }
 
 fn bin_str_to_oct(val: &str) -> u64 {
@@ -344,8 +354,14 @@ fn bin_str_to_oct(val: &str) -> u64 {
 
 pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
     map(
-        tuple((vec_flag_val, alt((digit1, is_a("xXzZ"))), variable_id)),
-        |(_ch, val, id)| {
+        tuple((
+            multispace0,
+            vec_flag_val,
+            alt((digit1, is_a("xXzZ"))),
+            variable_id,
+            multispace0,
+        )),
+        |(_, _ch, val, id, _)| {
             let mut res = Val {
                 val: 0u64,
                 vld: '0',
@@ -411,7 +427,7 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
 // }
 
 // main entry
-pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
+pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
         tuple((vcd_header, vcd_def, enddef_decl_cmd)),
         |(hdr, sc_list, _)| VcdMeta {
@@ -421,6 +437,19 @@ pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
         },
     )(s)
 }
+
+pub fn vcd_init(s: &str) -> IResult<&str, VcdTimeVal> {
+    map(
+        tuple((simu_time, dumpvars_simu_kw, many1(val_chg), end_kw)),
+        |(st_flag, _, tv_list, _)| VcdTimeVal { st_flag, tv_list },
+    )(s)
+}
+
+// pub fn vcd_body(s: &str) -> IResult<&str, _> {
+// many0(alt((simu_time, val_chg)))(s)
+// }
+
+// pub fn vcd_main(s: &str) ->
 
 #[cfg(test)]
 mod unit_test {
@@ -933,6 +962,31 @@ mod unit_test {
                         num: 1,
                         unit: "ps",
                     },
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_init() {
+        assert_eq!(
+            vcd_init("#0\r\n$dumpvars\r\nbx ok \r\nbx n'\r\n$end"), // BUG: why need space between 'k' and '\r\n'?
+            Ok((
+                "",
+                VcdTimeVal {
+                    st_flag: 0u32,
+                    tv_list: vec![
+                        Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "ok"
+                        },
+                        Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "n'"
+                        }
+                    ],
                 }
             ))
         );
