@@ -1,9 +1,9 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_a, tag, take_until},
-    character::complete::{digit0, digit1, multispace0},
+    character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
-    multi::many0,
+    multi::{many0, many1},
     sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
@@ -39,7 +39,8 @@ pub struct Var<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Val<'a> {
-    pub val: &'a str,
+    pub val: u64,
+    pub vld: char,
     pub id: &'a str,
 }
 
@@ -49,6 +50,13 @@ pub struct VcdMeta<'a> {
     pub sc_list: Vec<Scope<'a>>,
     pub rt_scope: u32,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VcdTimeVal<'a> {
+    pub st_flag: u32,
+    pub tv_list: Vec<Val<'a>>,
+}
+
 // ref to the verilog-std-1364-2005 LRM
 // declaration_keyword
 pub fn comm_delc_kw(s: &str) -> IResult<&str, &str> {
@@ -292,7 +300,6 @@ pub fn dumpvars_simu_kw(s: &str) -> IResult<&str, &str> {
     delimited(multispace0, tag("$dumpvars"), multispace0)(s)
 }
 
-// NOTE: no test
 pub fn simu_kw(s: &str) -> IResult<&str, &str> {
     alt((
         dumpall_simu_kw,
@@ -310,29 +317,74 @@ pub fn simu_time(s: &str) -> IResult<&str, u32> {
     map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
 }
 
-// NOTE: no test
-// pub fn val_chg(s: &str) -> IResult<&str, Val> {
-// alt((sec_val_chg, vec_val_chg))(s)
-// }
-
-pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(tuple((sec_val, variable_id)), |(val, id)| Val { val, id })(s)
+pub fn val_chg(s: &str) -> IResult<&str, Val> {
+    alt((sec_val_chg, vec_val_chg))(s)
 }
 
-// NOTE: no test
-pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     map(
-        tuple((vec_val, alt((digit1, is_a("xZ"))), variable_id)),
-        |(_ch, val, id)| Val { val, id },
+        tuple((sec_val, variable_id, multispace0)),
+        |(val, id, _)| {
+            let mut res = Val {
+                val: 0u64,
+                vld: '0',
+                id: id,
+            };
+            if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
+                res.vld = val;
+            } else {
+                res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
+            }
+            res
+        },
     )(s)
 }
 
-pub fn sec_val(s: &str) -> IResult<&str, &str> {
-    is_a("01xXzZ")(s)
+fn bin_str_to_oct(val: &str) -> u64 {
+    let mut res = 0u64;
+    let mut mul = 1u64;
+    for v in val.chars().rev() {
+        if v == '1' {
+            res += mul;
+        }
+        mul *= 2;
+    }
+    res
 }
 
-pub fn vec_val(s: &str) -> IResult<&str, &str> {
-    is_a("bBrR")(s)
+pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
+    map(
+        tuple((
+            multispace0,
+            vec_flag_val,
+            alt((digit1, is_a("xXzZ"))),
+            variable_id,
+            multispace0,
+        )),
+        |(_, _ch, val, id, _)| {
+            let mut res = Val {
+                val: 0u64,
+                vld: '0',
+                id: id,
+            };
+
+            if val == "x" || val == "X" || val == "z" || val == "Z" {
+                res.vld = val.chars().next().unwrap();
+            } else {
+                res.val = bin_str_to_oct(val);
+            }
+
+            res
+        },
+    )(s)
+}
+
+pub fn sec_val(s: &str) -> IResult<&str, char> {
+    one_of("01xXzZ")(s)
+}
+
+pub fn vec_flag_val(s: &str) -> IResult<&str, char> {
+    one_of("bBrR")(s)
 }
 
 // high level parser
@@ -375,7 +427,7 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
 // }
 
 // main entry
-pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
+pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
         tuple((vcd_header, vcd_def, enddef_decl_cmd)),
         |(hdr, sc_list, _)| VcdMeta {
@@ -385,6 +437,19 @@ pub fn vcd_main(s: &str) -> IResult<&str, VcdMeta> {
         },
     )(s)
 }
+
+pub fn vcd_init(s: &str) -> IResult<&str, VcdTimeVal> {
+    map(
+        tuple((simu_time, dumpvars_simu_kw, many1(val_chg), end_kw)),
+        |(st_flag, _, tv_list, _)| VcdTimeVal { st_flag, tv_list },
+    )(s)
+}
+
+// pub fn vcd_body(s: &str) -> IResult<&str, _> {
+// many0(alt((simu_time, val_chg)))(s)
+// }
+
+// pub fn vcd_main(s: &str) ->
 
 #[cfg(test)]
 mod unit_test {
@@ -723,8 +788,17 @@ mod unit_test {
     }
 
     #[test]
+    fn test_simu_kw() {
+        assert_eq!(simu_kw(" $dumpall"), Ok(("", "$dumpall")));
+        assert_eq!(simu_kw("  $dumpoff"), Ok(("", "$dumpoff")));
+        assert_eq!(simu_kw("$dumpon   "), Ok(("", "$dumpon")));
+        assert_eq!(simu_kw("$dumpvars     "), Ok(("", "$dumpvars")));
+    }
+
+    #[test]
     fn test_simu_time_val() {
         assert_eq!(simu_time_val("1000"), Ok(("", 1000u32)));
+        assert_eq!(simu_time_val("1324"), Ok(("", 1324u32)));
     }
 
     #[test]
@@ -733,45 +807,146 @@ mod unit_test {
     }
 
     #[test]
+    fn test_val_chg() {
+        assert_eq!(
+            val_chg("b101011 #%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b101011u64,
+                    vld: '0',
+                    id: "#%"
+                }
+            ))
+        );
+    }
+
+    #[test]
     fn test_sec_val_chg() {
-        assert_eq!(sec_val_chg("1#%\r\n"), Ok(("", Val { val: "1", id: "#%" })));
+        assert_eq!(
+            sec_val_chg("1#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 1u64,
+                    vld: '0',
+                    id: "#%"
+                }
+            ))
+        );
+        assert_eq!(
+            sec_val_chg("0:'\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: '0',
+                    id: ":'"
+                }
+            ))
+        );
+        assert_eq!(
+            sec_val_chg("10@'\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 1u64,
+                    vld: '0',
+                    id: "0@'"
+                }
+            ))
+        );
+
+        assert_eq!(
+            sec_val_chg("x4@\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
+                    id: "4@"
+                }
+            ))
+        );
+        assert_eq!(
+            sec_val_chg("zx4@\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'z',
+                    id: "x4@"
+                }
+            ))
+        );
     }
 
     #[test]
     fn test_vec_val_chg() {
         assert_eq!(
-            vec_val_chg("b101011#%\r\n"),
+            vec_val_chg("b101011 #%\r\n"),
             Ok((
                 "",
                 Val {
-                    val: "101011",
+                    val: 0b101011u64,
+                    vld: '0',
+                    id: "#%"
+                }
+            ))
+        );
+        assert_eq!(
+            vec_val_chg("b11111111111111111111111001101010 D%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b11111111111111111111111001101010u64,
+                    vld: '0',
+                    id: "D%"
+                }
+            ))
+        );
+
+        assert_eq!(
+            vec_val_chg("bx #%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
                     id: "#%"
                 }
             ))
         );
 
         assert_eq!(
-            vec_val_chg("bx#%\r\n"),
-            Ok(("", Val { val: "x", id: "#%" }))
+            vec_val_chg("bz x#%\r\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'z',
+                    id: "x#%"
+                }
+            ))
         );
     }
 
     #[test]
     fn test_sec_val() {
-        assert_eq!(sec_val("0"), Ok(("", "0")));
-        assert_eq!(sec_val("1"), Ok(("", "1")));
-        assert_eq!(sec_val("x"), Ok(("", "x")));
-        assert_eq!(sec_val("X"), Ok(("", "X")));
-        assert_eq!(sec_val("z"), Ok(("", "z")));
-        assert_eq!(sec_val("Z"), Ok(("", "Z")));
+        assert_eq!(sec_val("0"), Ok(("", '0')));
+        assert_eq!(sec_val("1"), Ok(("", '1')));
+        assert_eq!(sec_val("x"), Ok(("", 'x')));
+        assert_eq!(sec_val("X"), Ok(("", 'X')));
+        assert_eq!(sec_val("z"), Ok(("", 'z')));
+        assert_eq!(sec_val("Z"), Ok(("", 'Z')));
     }
 
     #[test]
-    fn test_vec_val() {
-        assert_eq!(vec_val("b"), Ok(("", "b")));
-        assert_eq!(vec_val("B"), Ok(("", "B")));
-        assert_eq!(vec_val("r"), Ok(("", "r")));
-        assert_eq!(vec_val("R"), Ok(("", "R")));
+    fn test_vec_flag_val() {
+        assert_eq!(vec_flag_val("b"), Ok(("", 'b')));
+        assert_eq!(vec_flag_val("B"), Ok(("", 'B')));
+        assert_eq!(vec_flag_val("r"), Ok(("", 'r')));
+        assert_eq!(vec_flag_val("R"), Ok(("", 'R')));
     }
 
     #[test]
@@ -787,6 +962,31 @@ mod unit_test {
                         num: 1,
                         unit: "ps",
                     },
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_init() {
+        assert_eq!(
+            vcd_init("#0\r\n$dumpvars\r\nbx ok \r\nbx n'\r\n$end"), // BUG: why need space between 'k' and '\r\n'?
+            Ok((
+                "",
+                VcdTimeVal {
+                    st_flag: 0u32,
+                    tv_list: vec![
+                        Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "ok"
+                        },
+                        Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "n'"
+                        }
+                    ],
                 }
             ))
         );
