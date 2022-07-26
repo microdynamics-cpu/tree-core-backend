@@ -205,6 +205,7 @@ pub fn variable_bw(s: &str) -> IResult<&str, u8> {
     map_res(digit1, |s: &str| s.parse::<u8>())(s)
 }
 
+//BUG: is right?
 pub fn variable_id(s: &str) -> IResult<&str, &str> {
     delimited(
         multispace0,
@@ -321,23 +322,24 @@ pub fn val_chg(s: &str) -> IResult<&str, Val> {
     alt((sec_val_chg, vec_val_chg))(s)
 }
 
+pub fn val_id(s: &str) -> IResult<&str, &str> {
+    delimited(multispace0, take_until("\r\n"), multispace0)(s)
+}
+
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(
-        tuple((sec_val, variable_id, multispace0)),
-        |(val, id, _)| {
-            let mut res = Val {
-                val: 0u64,
-                vld: '0',
-                id: id,
-            };
-            if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
-                res.vld = val;
-            } else {
-                res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
-            }
-            res
-        },
-    )(s)
+    map(tuple((sec_val, val_id, multispace0)), |(val, id, _)| {
+        let mut res = Val {
+            val: 0u64,
+            vld: '0',
+            id: id,
+        };
+        if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
+            res.vld = val;
+        } else {
+            res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
+        }
+        res
+    })(s)
 }
 
 fn bin_str_to_oct(val: &str) -> u64 {
@@ -358,7 +360,7 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
             multispace0,
             vec_flag_val,
             alt((digit1, is_a("xXzZ"))),
-            variable_id,
+            val_id,
             multispace0,
         )),
         |(_, _ch, val, id, _)| {
@@ -420,12 +422,6 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
     many0(var_decl_cmd)(s)
 }
 
-// pub fn vcd_body(s: &str) -> IResult<&str, &str> {
-// map(tuple((dumpvars_simu_kw,)), |()| {
-//
-// })(s)
-// }
-
 // main entry
 pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
@@ -445,9 +441,15 @@ pub fn vcd_init(s: &str) -> IResult<&str, VcdTimeVal> {
     )(s)
 }
 
-// pub fn vcd_body(s: &str) -> IResult<&str, _> {
-// many0(alt((simu_time, val_chg)))(s)
-// }
+pub fn vcd_timeval(s: &str) -> IResult<&str, VcdTimeVal> {
+    map(tuple((simu_time, many1(val_chg))), |(st_flag, tv_list)| {
+        VcdTimeVal { st_flag, tv_list }
+    })(s)
+}
+
+pub fn vcd_body(s: &str) -> IResult<&str, Vec<VcdTimeVal>> {
+    many0(vcd_timeval)(s)
+}
 
 // pub fn vcd_main(s: &str) ->
 
@@ -970,7 +972,7 @@ mod unit_test {
     #[test]
     fn test_vcd_init() {
         assert_eq!(
-            vcd_init("#0\r\n$dumpvars\r\nbx ok \r\nbx n'\r\n$end"), // BUG: why need space between 'k' and '\r\n'?
+            vcd_init("#0\r\n$dumpvars\r\nbx ok\r\nbx n'\r\n$end"),
             Ok((
                 "",
                 VcdTimeVal {
@@ -988,6 +990,52 @@ mod unit_test {
                         }
                     ],
                 }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_timeval() {
+        assert_eq!(
+            vcd_timeval("#0\r\nbx ok\r\n"),
+            Ok((
+                "",
+                VcdTimeVal {
+                    st_flag: 0u32,
+                    tv_list: vec![Val {
+                        val: 0u64,
+                        vld: 'x',
+                        id: "ok"
+                    }],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_body() {
+        assert_eq!(
+            vcd_body("#0\r\nbx ok\r\n#110000\r\nb10 R%\r\n"),
+            Ok((
+                "",
+                vec![
+                    VcdTimeVal {
+                        st_flag: 0u32,
+                        tv_list: vec![Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "ok"
+                        }],
+                    },
+                    VcdTimeVal {
+                        st_flag: 110000u32,
+                        tv_list: vec![Val {
+                            val: 2u64,
+                            vld: '0',
+                            id: "R%"
+                        }],
+                    }
+                ]
             ))
         );
     }
