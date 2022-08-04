@@ -351,6 +351,15 @@ pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     )(s)
 }
 
+fn check_undef_val(val: &str) -> bool {
+    for v in val.chars() {
+        if v == 'x' || v == 'X' || v == 'z' || v == 'Z' {
+            return true;
+        }
+    }
+    false
+}
+
 fn bin_str_to_oct(val: &str) -> u64 {
     let mut res = 0u64;
     let mut mul = 1u64;
@@ -368,7 +377,7 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
         tuple((
             multispace0,
             vec_flag_val,
-            alt((digit1, is_a("xXzZ"))),
+            alt((is_a("0xXzZ"), digit1)),
             val_id,
             multispace0,
         )),
@@ -379,8 +388,14 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
                 id: id,
             };
 
-            if val == "x" || val == "X" || val == "z" || val == "Z" {
-                res.vld = val.chars().next().unwrap();
+            if check_undef_val(val) {
+                let mut ch = val.chars();
+                if val.chars().count() == 1 {
+                    res.vld = ch.next().unwrap();
+                } else {
+                    res.vld = ch.next().unwrap();
+                    res.vld = ch.next().unwrap();
+                }
             } else {
                 res.val = bin_str_to_oct(val);
             }
@@ -898,6 +913,17 @@ mod unit_test {
     #[test]
     fn test_vec_val_chg() {
         assert_eq!(
+            vec_val_chg("b0xxxxxxxx s\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
+                    id: "s"
+                }
+            ))
+        );
+        assert_eq!(
             vec_val_chg("b101011 #%\r\n"),
             Ok((
                 "",
@@ -905,6 +931,17 @@ mod unit_test {
                     val: 0b101011u64,
                     vld: '0',
                     id: "#%"
+                }
+            ))
+        );
+        assert_eq!(
+            vec_val_chg("b101000001100001 v\"\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b101000001100001u64,
+                    vld: '0',
+                    id: "v\""
                 }
             ))
         );
