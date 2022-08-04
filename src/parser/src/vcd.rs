@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
-    multi::{many0, many1},
+    multi::many0,
     sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
@@ -318,28 +318,37 @@ pub fn simu_time(s: &str) -> IResult<&str, u32> {
     map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
 }
 
+// NOTE: pay attention to the order of two sub parser
 pub fn val_chg(s: &str) -> IResult<&str, Val> {
-    alt((sec_val_chg, vec_val_chg))(s)
+    alt((vec_val_chg, sec_val_chg))(s)
 }
 
+// NOTE: use the greedy method to match the longest pattern!
 pub fn val_id(s: &str) -> IResult<&str, &str> {
-    delimited(multispace0, take_until("\r\n"), multispace0)(s)
+    delimited(
+        multispace0,
+        alt((take_until("\r\n"), take_until("\n"))),
+        multispace0,
+    )(s)
 }
 
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
-    map(tuple((sec_val, val_id, multispace0)), |(val, id, _)| {
-        let mut res = Val {
-            val: 0u64,
-            vld: '0',
-            id: id,
-        };
-        if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
-            res.vld = val;
-        } else {
-            res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
-        }
-        res
-    })(s)
+    map(
+        tuple((multispace0, sec_val, val_id, multispace0)),
+        |(_, val, id, _)| {
+            let mut res = Val {
+                val: 0u64,
+                vld: '0',
+                id: id,
+            };
+            if val == 'x' || val == 'X' || val == 'z' || val == 'Z' {
+                res.vld = val;
+            } else {
+                res.val = val.to_digit(2).unwrap() as u64; //HACK: maybe right?
+            }
+            res
+        },
+    )(s)
 }
 
 fn bin_str_to_oct(val: &str) -> u64 {
@@ -375,7 +384,6 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
             } else {
                 res.val = bin_str_to_oct(val);
             }
-
             res
         },
     )(s)
@@ -422,7 +430,6 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
     many0(var_decl_cmd)(s)
 }
 
-// main entry
 pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
         tuple((vcd_header, vcd_def, enddef_decl_cmd)),
@@ -436,13 +443,13 @@ pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
 
 pub fn vcd_init(s: &str) -> IResult<&str, VcdTimeVal> {
     map(
-        tuple((simu_time, dumpvars_simu_kw, many1(val_chg), end_kw)),
+        tuple((simu_time, dumpvars_simu_kw, many0(val_chg), end_kw)),
         |(st_flag, _, tv_list, _)| VcdTimeVal { st_flag, tv_list },
     )(s)
 }
 
 pub fn vcd_timeval(s: &str) -> IResult<&str, VcdTimeVal> {
-    map(tuple((simu_time, many1(val_chg))), |(st_flag, tv_list)| {
+    map(tuple((simu_time, many0(val_chg))), |(st_flag, tv_list)| {
         VcdTimeVal { st_flag, tv_list }
     })(s)
 }
@@ -451,7 +458,12 @@ pub fn vcd_body(s: &str) -> IResult<&str, Vec<VcdTimeVal>> {
     many0(vcd_timeval)(s)
 }
 
-// pub fn vcd_main(s: &str) ->
+// main entry
+pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal)> {
+    map(tuple((vcd_meta, vcd_init, vcd_body)), |(meta, init, _)| {
+        (meta, init)
+    })(s)
+}
 
 #[cfg(test)]
 mod unit_test {
@@ -949,6 +961,7 @@ mod unit_test {
         assert_eq!(vec_flag_val("B"), Ok(("", 'B')));
         assert_eq!(vec_flag_val("r"), Ok(("", 'r')));
         assert_eq!(vec_flag_val("R"), Ok(("", 'R')));
+        assert_eq!(vec_flag_val("bx o'\n$end"), Ok(("x o'\n$end", 'b')));
     }
 
     #[test]
@@ -972,7 +985,7 @@ mod unit_test {
     #[test]
     fn test_vcd_init() {
         assert_eq!(
-            vcd_init("#0\r\n$dumpvars\r\nbx ok\r\nbx n'\r\n$end"),
+            vcd_init("#0\r\n$dumpvars\r\nbx o'\r\nbx n'\r\n$end"),
             Ok((
                 "",
                 VcdTimeVal {
@@ -981,7 +994,7 @@ mod unit_test {
                         Val {
                             val: 0u64,
                             vld: 'x',
-                            id: "ok"
+                            id: "o'"
                         },
                         Val {
                             val: 0u64,
