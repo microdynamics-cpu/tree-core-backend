@@ -1,6 +1,6 @@
 use std::time::Instant;
 use std::{env, fs};
-use treecore_parser::vcd::vcd_meta;
+use treecore_parser::vcd::vcd_main;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -9,18 +9,23 @@ fn main() {
     let start = Instant::now();
     let contents = fs::read_to_string(filename).expect("[error]read the file");
     // println!("With text:\n{}", contents);
-    let res = vcd_meta(contents.as_str());
+    let res = vcd_main(contents.as_str());
     let duration = start.elapsed();
 
     match res {
         Ok(v) => {
-            println!("hdr: {:?}", v.1.hdr);
-            println!("rt scope: {:?}", v.1.rt_scope);
-            for vv in v.1.sc_list {
+            println!("hdr: {:?}", v.1 .0.hdr);
+            println!("rt scope: {:?}", v.1 .0.rt_scope);
+            for vv in v.1 .0.sc_list {
                 println!("scope: {:?}\n", vv);
             }
+
+            println!("init val: {:?}", v.1 .1);
+            println!(
+                "\x1b[92mTime elapsed in vcd_main() is: {:?}\x1b[0m",
+                duration
+            );
         }
-        Err(_v) => panic!(),
+        Err(e) => panic!("{}", e),
     }
-    println!("\x1b[92mTime elapsed in vcd_meta() is: {:?}\x1b[0m", duration);
 }
