@@ -165,7 +165,7 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
 
 pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
     map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
-        println!("[upscope]");
+        // println!("[upscope]");
         Scope {
             sc_type: "no",
             sc_id: "no",
@@ -367,7 +367,7 @@ fn bin_str_to_oct(val: &str) -> u64 {
         if v == '1' {
             res += mul;
         }
-        mul *= 2;
+        mul = mul.wrapping_mul(2);
     }
     res
 }
@@ -422,7 +422,7 @@ pub fn vcd_header(s: &str) -> IResult<&str, Header> {
 
 pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
     map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
-        println!("[scope]");
+        // println!("[scope]");
         scope.var_list = var_list;
         scope
     })(s)
@@ -474,10 +474,11 @@ pub fn vcd_body(s: &str) -> IResult<&str, Vec<VcdTimeVal>> {
 }
 
 // main entry
-pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal)> {
-    map(tuple((vcd_meta, vcd_init, vcd_body)), |(meta, init, _)| {
-        (meta, init)
-    })(s)
+pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal, Vec<VcdTimeVal>)> {
+    map(
+        tuple((vcd_meta, vcd_init, vcd_body)),
+        |(meta, init, body)| (meta, init, body),
+    )(s)
 }
 
 #[cfg(test)]

@@ -25,6 +25,10 @@ fn main() {
                 "\x1b[92mTime elapsed in vcd_main() is: {:?}\x1b[0m",
                 duration
             );
+            println!(
+                "\x1b[92mParse speed is about: {:?}K lines/s\x1b[0m",
+                374119 / duration.as_secs() / 1000
+            );
         }
         Err(e) => panic!("{}", e),
     }
