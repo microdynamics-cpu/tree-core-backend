@@ -165,7 +165,7 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
 
 pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
     map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
-        // println!("[upscope]");
+        println!("[upscope]");
         Scope {
             sc_type: "no",
             sc_id: "no",
@@ -422,7 +422,7 @@ pub fn vcd_header(s: &str) -> IResult<&str, Header> {
 
 pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
     map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
-        // println!("[scope]");
+        println!("[scope] id: {}", scope.sc_id);
         scope.var_list = var_list;
         scope
     })(s)
