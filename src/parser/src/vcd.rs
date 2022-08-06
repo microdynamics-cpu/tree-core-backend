@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{is_a, tag, take_until},
     character::complete::{digit0, digit1, multispace0, one_of},
     combinator::{map, map_res},
-    multi::{many0, many1},
+    multi::many0,
     sequence::{delimited, pair, separated_pair, tuple},
     IResult,
 };
@@ -205,6 +205,7 @@ pub fn variable_bw(s: &str) -> IResult<&str, u8> {
     map_res(digit1, |s: &str| s.parse::<u8>())(s)
 }
 
+//BUG: is right?
 pub fn variable_id(s: &str) -> IResult<&str, &str> {
     delimited(
         multispace0,
@@ -317,14 +318,24 @@ pub fn simu_time(s: &str) -> IResult<&str, u32> {
     map(tuple((tag("#"), simu_time_val)), |(_, v)| v)(s)
 }
 
+// NOTE: pay attention to the order of two sub parser
 pub fn val_chg(s: &str) -> IResult<&str, Val> {
-    alt((sec_val_chg, vec_val_chg))(s)
+    alt((vec_val_chg, sec_val_chg))(s)
+}
+
+// NOTE: use the greedy method to match the longest pattern!
+pub fn val_id(s: &str) -> IResult<&str, &str> {
+    delimited(
+        multispace0,
+        alt((take_until("\r\n"), take_until("\n"))),
+        multispace0,
+    )(s)
 }
 
 pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     map(
-        tuple((sec_val, variable_id, multispace0)),
-        |(val, id, _)| {
+        tuple((multispace0, sec_val, val_id, multispace0)),
+        |(_, val, id, _)| {
             let mut res = Val {
                 val: 0u64,
                 vld: '0',
@@ -340,6 +351,15 @@ pub fn sec_val_chg(s: &str) -> IResult<&str, Val> {
     )(s)
 }
 
+fn check_undef_val(val: &str) -> bool {
+    for v in val.chars() {
+        if v == 'x' || v == 'X' || v == 'z' || v == 'Z' {
+            return true;
+        }
+    }
+    false
+}
+
 fn bin_str_to_oct(val: &str) -> u64 {
     let mut res = 0u64;
     let mut mul = 1u64;
@@ -347,7 +367,7 @@ fn bin_str_to_oct(val: &str) -> u64 {
         if v == '1' {
             res += mul;
         }
-        mul *= 2;
+        mul = mul.wrapping_mul(2);
     }
     res
 }
@@ -357,8 +377,8 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
         tuple((
             multispace0,
             vec_flag_val,
-            alt((digit1, is_a("xXzZ"))),
-            variable_id,
+            alt((is_a("0xXzZ"), digit1)),
+            val_id,
             multispace0,
         )),
         |(_, _ch, val, id, _)| {
@@ -368,12 +388,17 @@ pub fn vec_val_chg(s: &str) -> IResult<&str, Val> {
                 id: id,
             };
 
-            if val == "x" || val == "X" || val == "z" || val == "Z" {
-                res.vld = val.chars().next().unwrap();
+            if check_undef_val(val) {
+                let mut ch = val.chars();
+                if val.chars().count() == 1 {
+                    res.vld = ch.next().unwrap();
+                } else {
+                    res.vld = ch.next().unwrap();
+                    res.vld = ch.next().unwrap();
+                }
             } else {
                 res.val = bin_str_to_oct(val);
             }
-
             res
         },
     )(s)
@@ -397,7 +422,7 @@ pub fn vcd_header(s: &str) -> IResult<&str, Header> {
 
 pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
     map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
-        println!("[scope]");
+        println!("[scope] id: {}", scope.sc_id);
         scope.var_list = var_list;
         scope
     })(s)
@@ -420,13 +445,6 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
     many0(var_decl_cmd)(s)
 }
 
-// pub fn vcd_body(s: &str) -> IResult<&str, &str> {
-// map(tuple((dumpvars_simu_kw,)), |()| {
-//
-// })(s)
-// }
-
-// main entry
 pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
         tuple((vcd_header, vcd_def, enddef_decl_cmd)),
@@ -440,16 +458,28 @@ pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
 
 pub fn vcd_init(s: &str) -> IResult<&str, VcdTimeVal> {
     map(
-        tuple((simu_time, dumpvars_simu_kw, many1(val_chg), end_kw)),
+        tuple((simu_time, dumpvars_simu_kw, many0(val_chg), end_kw)),
         |(st_flag, _, tv_list, _)| VcdTimeVal { st_flag, tv_list },
     )(s)
 }
 
-// pub fn vcd_body(s: &str) -> IResult<&str, _> {
-// many0(alt((simu_time, val_chg)))(s)
-// }
+pub fn vcd_timeval(s: &str) -> IResult<&str, VcdTimeVal> {
+    map(tuple((simu_time, many0(val_chg))), |(st_flag, tv_list)| {
+        VcdTimeVal { st_flag, tv_list }
+    })(s)
+}
 
-// pub fn vcd_main(s: &str) ->
+pub fn vcd_body(s: &str) -> IResult<&str, Vec<VcdTimeVal>> {
+    many0(vcd_timeval)(s)
+}
+
+// main entry
+pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal, Vec<VcdTimeVal>)> {
+    map(
+        tuple((vcd_meta, vcd_init, vcd_body)),
+        |(meta, init, body)| (meta, init, body),
+    )(s)
+}
 
 #[cfg(test)]
 mod unit_test {
@@ -884,6 +914,17 @@ mod unit_test {
     #[test]
     fn test_vec_val_chg() {
         assert_eq!(
+            vec_val_chg("b0xxxxxxxx s\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0u64,
+                    vld: 'x',
+                    id: "s"
+                }
+            ))
+        );
+        assert_eq!(
             vec_val_chg("b101011 #%\r\n"),
             Ok((
                 "",
@@ -891,6 +932,17 @@ mod unit_test {
                     val: 0b101011u64,
                     vld: '0',
                     id: "#%"
+                }
+            ))
+        );
+        assert_eq!(
+            vec_val_chg("b101000001100001 v\"\n"),
+            Ok((
+                "",
+                Val {
+                    val: 0b101000001100001u64,
+                    vld: '0',
+                    id: "v\""
                 }
             ))
         );
@@ -947,6 +999,7 @@ mod unit_test {
         assert_eq!(vec_flag_val("B"), Ok(("", 'B')));
         assert_eq!(vec_flag_val("r"), Ok(("", 'r')));
         assert_eq!(vec_flag_val("R"), Ok(("", 'R')));
+        assert_eq!(vec_flag_val("bx o'\n$end"), Ok(("x o'\n$end", 'b')));
     }
 
     #[test]
@@ -970,7 +1023,7 @@ mod unit_test {
     #[test]
     fn test_vcd_init() {
         assert_eq!(
-            vcd_init("#0\r\n$dumpvars\r\nbx ok \r\nbx n'\r\n$end"), // BUG: why need space between 'k' and '\r\n'?
+            vcd_init("#0\r\n$dumpvars\r\nbx o'\r\nbx n'\r\n$end"),
             Ok((
                 "",
                 VcdTimeVal {
@@ -979,7 +1032,7 @@ mod unit_test {
                         Val {
                             val: 0u64,
                             vld: 'x',
-                            id: "ok"
+                            id: "o'"
                         },
                         Val {
                             val: 0u64,
@@ -988,6 +1041,52 @@ mod unit_test {
                         }
                     ],
                 }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_timeval() {
+        assert_eq!(
+            vcd_timeval("#0\r\nbx ok\r\n"),
+            Ok((
+                "",
+                VcdTimeVal {
+                    st_flag: 0u32,
+                    tv_list: vec![Val {
+                        val: 0u64,
+                        vld: 'x',
+                        id: "ok"
+                    }],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_vcd_body() {
+        assert_eq!(
+            vcd_body("#0\r\nbx ok\r\n#110000\r\nb10 R%\r\n"),
+            Ok((
+                "",
+                vec![
+                    VcdTimeVal {
+                        st_flag: 0u32,
+                        tv_list: vec![Val {
+                            val: 0u64,
+                            vld: 'x',
+                            id: "ok"
+                        }],
+                    },
+                    VcdTimeVal {
+                        st_flag: 110000u32,
+                        tv_list: vec![Val {
+                            val: 2u64,
+                            vld: '0',
+                            id: "R%"
+                        }],
+                    }
+                ]
             ))
         );
     }
