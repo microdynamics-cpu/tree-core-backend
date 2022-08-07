@@ -8,6 +8,24 @@ use nom::{
     IResult,
 };
 
+// id:   scope's name
+// chd:  sub scope node
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RTNode<'a> {
+    pub id: &'a str,
+    pub par: Option<Box<RTNode<'a>>>,
+    pub chd: Option<Vec<Box<RTNode<'a>>>>,
+}
+
+impl<'a> RTNode<'a> {
+    pub fn new(id: &'a str, par: Option<Box<RTNode<'a>>>) -> Self {
+        RTNode { id, par, chd: None }
+    }
+}
+
+#[allow(non_upper_case_globals)]
+static mut sc_cnt: i32 = 0i32;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeScale<'a> {
     pub num: u8,
@@ -25,6 +43,7 @@ pub struct Header<'a> {
 pub struct Scope<'a> {
     pub sc_type: &'a str,
     pub sc_id: &'a str,
+    pub sc_cnt: i32,
     pub var_list: Vec<Var<'a>>,
 }
 
@@ -48,7 +67,7 @@ pub struct Val<'a> {
 pub struct VcdMeta<'a> {
     pub hdr: Header<'a>,
     pub sc_list: Vec<Scope<'a>>,
-    pub rt_scope: u32,
+    pub rt_scope: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -132,6 +151,7 @@ pub fn scope_decl_cmd(s: &str) -> IResult<&str, Scope> {
         |(_, sc_type, sc_id, _)| Scope {
             sc_type,
             sc_id,
+            sc_cnt: 0i32,
             var_list: Vec::new(),
         },
     )(s)
@@ -166,9 +186,14 @@ pub fn tsc_decl_cmd(s: &str) -> IResult<&str, TimeScale> {
 pub fn usc_decl_cmd(s: &str) -> IResult<&str, Scope> {
     map(tuple((usc_decl_kw, multispace0, end_kw)), |(_, _, _)| {
         println!("[upscope]");
+        unsafe {
+            sc_cnt = sc_cnt - 1;
+            // println!("sc_cnt: {}", sc_cnt);
+        }
         Scope {
             sc_type: "no",
             sc_id: "no",
+            sc_cnt: -1i32,
             var_list: Vec::new(),
         }
     })(s)
@@ -423,6 +448,11 @@ pub fn vcd_header(s: &str) -> IResult<&str, Header> {
 pub fn vcd_scope(s: &str) -> IResult<&str, Scope> {
     map(tuple((scope_decl_cmd, vcd_var)), |(mut scope, var_list)| {
         println!("[scope] id: {}", scope.sc_id);
+        unsafe {
+            sc_cnt = sc_cnt + 1;
+            scope.sc_cnt = sc_cnt;
+            // println!("sc_cnt: {}", sc_cnt);
+        }
         scope.var_list = var_list;
         scope
     })(s)
@@ -448,10 +478,15 @@ pub fn vcd_var(s: &str) -> IResult<&str, Vec<Var>> {
 pub fn vcd_meta(s: &str) -> IResult<&str, VcdMeta> {
     map(
         tuple((vcd_header, vcd_def, enddef_decl_cmd)),
-        |(hdr, sc_list, _)| VcdMeta {
-            hdr,
-            sc_list,
-            rt_scope: 0u32,
+        |(hdr, sc_list, _)| {
+            let res = unsafe {
+                VcdMeta {
+                    hdr,
+                    sc_list,
+                    rt_scope: sc_cnt,
+                }
+            };
+            res
         },
     )(s)
 }
@@ -480,6 +515,25 @@ pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal, Vec<VcdTimeVal>)
         |(meta, init, body)| (meta, init, body),
     )(s)
 }
+
+// create val -> update
+pub fn vcd_build_tree<'a>(v: &Vec<Scope<'a>>) -> Box<RTNode<'a>> {
+    let rt_sc = RTNode::new("", None);
+    let mut cur_sc = Box::new(rt_sc);
+    for vv in v {
+        if vv.sc_cnt == -1 {
+            match cur_sc.par {
+                Some(v) => cur_sc = v,
+                None => {}
+            }
+        } else if vv.sc_cnt >= 1 {
+            let tmp = RTNode::new(vv.sc_id, Some(cur_sc.clone()));
+        }
+    }
+    cur_sc
+}
+
+// pub fn vcd_trav_tree(rt: Box<RTNode>) {}
 
 #[cfg(test)]
 mod unit_test {
@@ -618,6 +672,7 @@ mod unit_test {
                 Scope {
                     sc_type: "module",
                     sc_id: "tinyriscv_soc_tb",
+                    sc_cnt: 0i32,
                     var_list: Vec::new(),
                 }
             ))
@@ -630,6 +685,7 @@ mod unit_test {
                 Scope {
                     sc_type: "module",
                     sc_id: "tinyriscv_soc_tb",
+                    sc_cnt: 0i32,
                     var_list: Vec::new(),
                 }
             ))
@@ -680,6 +736,7 @@ mod unit_test {
                 Scope {
                     sc_type: "no",
                     sc_id: "no",
+                    sc_cnt: 0i32,
                     var_list: Vec::new(),
                 }
             )),
@@ -691,6 +748,7 @@ mod unit_test {
                 Scope {
                     sc_type: "no",
                     sc_id: "no",
+                    sc_cnt: 0i32,
                     var_list: Vec::new(),
                 }
             )),

@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use std::{env, fs, fs::File};
-use treecore_parser::vcd::vcd_main;
+use treecore_parser::vcd::{vcd_main, vcd_build_tree};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -20,13 +20,16 @@ fn main() {
     let duration = start.elapsed();
 
     match res {
-        Ok(_v) => {
+        Ok(v) => {
             // println!("hdr: {:?}", v.1 .0.hdr);
-            // println!("rt scope: {:?}", v.1 .0.rt_scope);
-            // for vv in v.1 .0.sc_list {
-            // println!("scope: {:?}\n", vv);
+            println!("rt scope: {:?}", v.1 .0.rt_scope);
+            let res = vcd_build_tree(&v.1 .0.sc_list);
+            println!("res's id: {}", res.id);
+            // for vv in &v.1 .0.sc_list {
+            //     if vv.sc_cnt > 0 {
+            //         println!("scope id: {}, hier: {}", vv.sc_id, vv.sc_cnt);
+            //     }
             // }
-
             // println!("init val: {:?}", v.1 .1);
             println!(
                 "\x1b[92mTime elapsed in vcd_main() is: {:?}\x1b[0m",
