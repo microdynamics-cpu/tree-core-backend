@@ -8,18 +8,37 @@ use nom::{
     IResult,
 };
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 // id:   scope's name
 // chd:  sub scope node
+type NodeType = Rc<RefCell<RTNode>>;
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RTNode<'a> {
-    pub id: &'a str,
-    pub par: Option<Box<RTNode<'a>>>,
-    pub chd: Option<Vec<Box<RTNode<'a>>>>,
+pub struct RTNode {
+    pub id: String,
+    pub par: Option<NodeType>,
+    pub chd: Option<Vec<NodeType>>,
 }
 
-impl<'a> RTNode<'a> {
-    pub fn new(id: &'a str, par: Option<Box<RTNode<'a>>>) -> Self {
+impl RTNode {
+    #[inline]
+    pub fn new(id: String, par: Option<NodeType>) -> Self {
         RTNode { id, par, chd: None }
+    }
+
+    pub fn get_rc(rc_rc: &Option<NodeType>) -> Option<NodeType> {
+        if let Some(ref new_node_rf) = *rc_rc {
+            let new_rc = Rc::clone(new_node_rf);
+            Some(new_rc)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_id(node: &Option<NodeType>) -> String {
+        let rc = RTNode::get_rc(node);
+        rc.unwrap().borrow().clone().id
     }
 }
 
@@ -260,6 +279,7 @@ pub fn variable_sca_ref(s: &str) -> IResult<&str, (&str, (u8, u8))> {
         (s, (0, 0))
     })(s)
 }
+
 pub fn var_decl_cmd(s: &str) -> IResult<&str, Var> {
     map(
         tuple((
@@ -516,23 +536,6 @@ pub fn vcd_main(s: &str) -> IResult<&str, (VcdMeta, VcdTimeVal, Vec<VcdTimeVal>)
     )(s)
 }
 
-// create val -> update
-pub fn vcd_build_tree<'a>(v: &Vec<Scope<'a>>) -> Box<RTNode<'a>> {
-    let rt_sc = RTNode::new("", None);
-    let mut cur_sc = Box::new(rt_sc);
-    for vv in v {
-        if vv.sc_cnt == -1 {
-            match cur_sc.par {
-                Some(v) => cur_sc = v,
-                None => {}
-            }
-        } else if vv.sc_cnt >= 1 {
-            let tmp = RTNode::new(vv.sc_id, Some(cur_sc.clone()));
-        }
-    }
-    cur_sc
-}
-
 // pub fn vcd_trav_tree(rt: Box<RTNode>) {}
 
 #[cfg(test)]
@@ -736,7 +739,7 @@ mod unit_test {
                 Scope {
                     sc_type: "no",
                     sc_id: "no",
-                    sc_cnt: 0i32,
+                    sc_cnt: -1i32,
                     var_list: Vec::new(),
                 }
             )),
@@ -748,7 +751,7 @@ mod unit_test {
                 Scope {
                     sc_type: "no",
                     sc_id: "no",
-                    sc_cnt: 0i32,
+                    sc_cnt: -1i32,
                     var_list: Vec::new(),
                 }
             )),
@@ -1148,4 +1151,11 @@ mod unit_test {
             ))
         );
     }
+
+    // #[test]
+    // fn test_get_val() {
+    //     let node = Some(Rc::new(RefCell::new(RTNode::new(3))));
+    //     assert_eq!(3, node.unwrap().borrow().val);
+    // }
+
 }
